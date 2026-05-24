@@ -1,0 +1,637 @@
+// variables that can be replaced are as follows:
+// money: the amount of money the player currrently has
+// profit: the amount of money the player made (or lost) from the last robbery
+// time_till_death: seconds until capture (N/A on successful escape)
+// heist_duration: total seconds spent in the run before report
+// stopped_at_shaft: yes/no if the run detoured through soup_store shaft route
+// rand: makes a random number between 1-10
+// author: randomly generated author name
+{
+    "successful": {
+        "newspapers": [
+            "Article {rand}\nBy {author}\n\nNew reports have released, and so has the bank's money. These new reports say that the newest criminal on the streets is taking unbelievable amounts of money from the Blue Moon Bank.\n\n'I couldn't believe it until I saw the vault myself,' bank guard {author} says. According to overnight staff, alarm bells rang for less than a minute before all motion stopped, and by the time patrols regrouped, key corridors were empty.\n\nThe bank is thinking about installing new security measures, like giving the bank teller a gun. But as usual, the Blue Moon Bank is still waiting for the subcommittee to finish reviewing the committee’s recommendation to maybe think about doing something. This subcommitte has got to go. So has this criminal. Peace!\n\nLocal shop owners say customer confidence is starting to dip, with some residents now withdrawing cash during daylight hours only.",
+            "Article {rand}\nBy {author}\n\nAnother late-night heist has left Blue Moon Bank counting losses again. Witnesses say the robber moved through the halls before guards could react, slipping between patrol routes with near-perfect timing and avoiding every blind-corner checkpoint.\n\n'We heard a bell, then footsteps, then nothing,' says security officer {author}. 'The route looked rehearsed. Whoever did this knew where we would be and when we would turn.'\n\nCity officials claim a response plan is in progress, but local businesses are asking how many more robberies it will take before anything changes. Merchants near the square say insurance rates are already rising, and residents are requesting more visible night patrols around major buildings.\n\nBank leadership says a new operations review is underway, including vault timer changes, door-control audits, and updated guard shift handoffs.",
+            "Article {rand}\nBy {author}\n\nBlue Moon Bank confirms fresh damage after a vault breach during overnight hours. The suspect reportedly escaped with a heavy bag and no confirmed identity, leaving behind scattered tools, disturbed lock plates, and a trail that disappeared before the west alley exit.\n\n'It's like they know the building better than we do,' says guard {author}. Investigators noted that the intruder avoided high-traffic lanes and appears to have tested response times across multiple hallways before committing to the final route.\n\nResidents nearby are urging the bank to improve patrol routes, lock timing, and emergency drills before the next attempt. Several council members say they want measurable deadlines, not another open-ended promise.\n\nA spokesperson for the bank stated that internal controls are being re-evaluated and additional personnel may be added on weekends.",
+            "Article {rand}\nBy {author}\n\nThe streets are buzzing after yet another successful hit on Blue Moon Bank. Investigators say entry and exit patterns suggest careful planning, with movement concentrated in low-visibility corridors and rapid direction changes near key intersections.\n\n'By the time we regrouped, they were gone,' says responding guard {author}. Reviewers say guard teams did make contact with suspicious movement, but could not close distance before the suspect reached a clear lane to the perimeter.\n\nTown council members announced a hearing on private security standards, though no specific upgrades were approved. Community advocates are asking for immediate stopgap measures, including rotating checkpoint routes and stronger vault access logs.\n\nThe mayor's office confirmed that an inter-department task group will publish recommendations after the next public session.",
+            "Article {rand}\nBy {author}\n\nBlue Moon Bank suffered a new cash loss overnight, according to staff arriving before sunrise. No civilian injuries were reported, but multiple interior passages showed signs of forced movement and rushed containment efforts.\n\n'We've never seen someone move this fast between rooms,' says bank employee {author}. Workers described a short but chaotic response window where alarms triggered in sequence before quickly going silent.\n\nManagement says stronger security is under review, while customers keep asking the same question: why wasn't this fixed after the last robbery? Analysts say repeated incidents are beginning to affect confidence in downtown institutions more broadly.\n\nIn a written statement, the bank said it is prioritizing sensor reliability, patrol coordination, and stricter overnight access protocols.",
+            "Article {rand}\nBy {author}\n\nA repeat offender appears to be targeting Blue Moon Bank with growing confidence. Officials describe the latest robbery as organized and deliberate, with the suspect exploiting narrow timing gaps between overlapping guard loops.\n\n'Our patrol crossed paths too late,' guard {author} told reporters. 'We were close, but close doesn't matter if the route is already open.'\n\nThe bank says it is considering updated guard schedules, better alarm coverage, and hardened vault access points in the coming weeks. Meanwhile, residents have requested more transparent updates on what changes are actually implemented versus merely proposed.\n\nInvestigators are also comparing this incident with prior attempts to map repeated movement patterns and likely staging positions.",
+            "Article {rand}\nBy {author}\n\nFinancial desks estimate the robber's total cash on hand is now around ${money}, with an estimated swing of ${profit} from the latest incident alone. Market watchers say the consistency of these outcomes suggests disciplined planning rather than opportunistic theft.\n\n'At this rate, they'll be richer than the board,' joked analyst {author}, before adding that repeated losses could eventually pressure lending and branch operations.\n\nBlue Moon executives declined to comment on the running total but confirmed internal reviews are active. Staff unions are pushing for immediate policy changes, including expanded training and hazard compensation for overnight personnel.\n\nCouncil observers expect the next banking oversight meeting to focus on accountability timelines and enforcement tools.",
+            "Article {rand}\nBy {author}\n\nCity watch reports say the latest bank raid changed the robber's net by ${profit}. Sources tracking the spree estimate the criminal now holds roughly ${money}, a figure that has become a constant point of debate among officials and residents.\n\n'Even a small gain each night adds up fast,' said market observer {author}. 'What matters is the streak. Once systems get predictable, losses compound.'\n\nOfficials are urging the bank to act before those numbers climb again. Nearby businesses have requested coordinated emergency drills and clearer communication during overnight incidents to reduce panic and rumor spread.\n\nA preliminary response plan is expected this week, though no binding deadlines have been announced.",
+            "Article {rand}\nBy {author}\n\nAfter last night's break-in, accounting teams say the suspect's total stash may be near ${money}. Preliminary estimates place this run's take at ${profit}, pending full reconciliation of vault logs and transfer records.\n\n'We're watching a pattern, not random chaos,' said investigator {author}. 'The movement is intentional, and the exits are chosen with discipline.'\n\nCouncil members say emergency funding for better defenses will be discussed this week, including expanded guard staffing, better camera overlap, and stricter overnight lock sequencing.\n\nFor now, Blue Moon Bank remains open, but customers are being advised to expect temporary procedural delays while security upgrades are reviewed."
+        ],
+        "dialogue": [
+            // in dialogue, 1 is the first bar guy, 2 is the second, and 3 is the bartender
+            {
+                "1": "Did you see the robbery last night?",
+                "2": "Uhh.. no?",
+                "3": "Wait. Are you the robber?!"
+            },
+            {
+                "1": "Did you hear about the robbery last night?",
+                "2": "Yeah. The robber apparently stole {profit}.",
+                "3": "Blue Moon Bank called that \"within acceptable losses.\""
+            },
+            {
+                "1": "The police still haven't caught the robber.",
+                "2": "Really? Someone nearby suddenly has {money}.",
+                "3": "The investigation remains difficult."
+            },
+            {
+                "1": "I heard the robber was extremely professional.",
+                "2": "He even held the door open on the way out.",
+                "3": "Honestly better customer service than the bank."
+            },
+            {
+                "1": "The bank promised stronger security this time.",
+                "2": "What are they adding?",
+                "3": "A slightly larger sign saying 'Please Don't Rob Us.'"
+            },
+            {
+                "1": "Apparently the robbery happened at exactly {rand} PM.",
+                "2": "That's oddly specific.",
+                "3": "The robber submitted a calendar invite."
+            },
+            {
+                "1": "Who keeps writing articles about these robberies?",
+                "2": "{author}, apparently.",
+                "3": "That guy reports the crime before it happens."
+            },
+            {
+                "1": "The vault alarm never went off.",
+                "2": "Was it disabled?",
+                "3": "No, they forgot the batteries again."
+            },
+            {
+                "1": "The robber escaped with bags of cash.",
+                "2": "How many bags?",
+                "3": "Enough for the bank to call an emergency meeting."
+            },
+            {
+                "1": "Did anyone try to stop the robbery?",
+                "2": "Yeah, customer support opened a ticket.",
+                "3": "Estimated response time: 7 business days."
+            },
+            {
+                "1": "The sheriff described the suspect as dangerous.",
+                "2": "Why dangerous?",
+                "3": "He understood compound interest."
+            },
+            {
+                "1": "You hear about the robbery last night?",
+                "2": "Yeah.",
+                "3": "Anyway, today's stew has extra potatoes."
+            },
+            {
+                "1": "Apparently someone stole {profit} from the bank.",
+                "2": "Good for them.",
+                "3": "You want another drink?"
+            },
+            {
+                "1": "The guards searched the whole town today.",
+                "2": "Find anything?",
+                "3": "The mayor lost his hat."
+            },
+            {
+                "1": "You look nervous.",
+                "2": "Do I?",
+                "3": "Relax. Everyone in here looks guilty."
+            },
+            {
+                "1": "The bank says the robber was highly dangerous.",
+                "2": "Were they armed?",
+                "3": "Worse. Financially motivated."
+            },
+            {
+                "1": "The sheriff questioned everyone in the tavern earlier.",
+                "2": "That sounds stressful.",
+                "3": "He tipped poorly."
+            },
+            {
+                "1": "Some outlaw escaped with {money}.",
+                "2": "That's terrible.",
+                "3": "Drinks are still two coins."
+            },
+            {
+                "1": "Apparently the robber vanished without a trace.",
+                "2": "Impressive.",
+                "3": "Not as impressive as Martha's onion soup."
+            },
+            {
+                "1": "The newspaper called it the biggest robbery in years.",
+                "2": "Wow.",
+                "3": "Anyway, we're out of bread."
+            },
+            {
+                "1": "The bank increased security after last night.",
+                "2": "Did it work?",
+                "3": "No clue. I work at a tavern."
+            },
+            {
+                "1": "You hear the robber escaped at exactly {rand} PM?",
+                "2": "Oddly specific.",
+                "3": "The newspaper needed to fill space."
+            },
+            {
+                "1": "Who keeps writing these robbery articles?",
+                "2": "{author}.",
+                "3": "That guy spends more time at the tavern than the crime scenes."
+            },
+            {
+                "1": "The soup store's been closed for weeks.",
+                "2": "Then who's paying the electric bill?",
+                "3": "The soup."
+            }
+        ],
+        "conditions": [
+            {
+                "id": "small_take",
+                "when": { "profit_max": 20 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nBlue Moon Bank confirmed another robbery, but this one ended with a relatively small haul of about ${profit}. Officials called it 'limited damage,' though customers still described the event as tense and disruptive.\n\n'It wasn't their biggest hit, but it's the same pattern again,' said staff member {author}. Security teams reported brief alarm activity before the suspect slipped away.\n\nCity analysts noted that frequent smaller losses can still add up over time, especially when public trust keeps dropping. Business owners nearby said they are more worried about repetition than any single number."
+                ],
+                "dialogue": [
+                    {
+                        "1": "Only {profit} this time?",
+                        "2": "Small score, same headache.",
+                        "3": "Death by a thousand 'minor incidents.'"
+                    },
+                    {
+                        "1": "The robber didn't get much.",
+                        "2": "Still got out, though.",
+                        "3": "And that's the part people remember."
+                    }
+                ]
+            },
+            {
+                "id": "big_take",
+                "when": { "profit_min": 60 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nBlue Moon Bank is facing pressure after a major robbery estimated near ${profit}. Witnesses described organized movement, rapid corridor decisions, and an exit route that appeared pre-planned down to the second.\n\n'It looked practiced,' said guard {author}. 'Every hesitation from us became an opening for them.'\n\nMerchants around the district warned that another high-loss incident could impact confidence in nearby businesses. City officials said emergency oversight hearings are being prepared."
+                ],
+                "dialogue": [
+                    {
+                        "1": "Did you hear how much they took? {profit}.",
+                        "2": "That's not a robbery, that's a budget revision.",
+                        "3": "Blue Moon's board is pretending this is fine again."
+                    },
+                    {
+                        "1": "Big score last night.",
+                        "2": "And no one stopped them?",
+                        "3": "Stopped? They barely even slowed them down."
+                    }
+                ]
+            },
+            {
+                "id": "wealthy_robber",
+                "when": { "money_min": 150 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nWith the suspect's estimated total now around ${money}, investigators are treating the Blue Moon robberies as a prolonged campaign instead of isolated events. Officials say the consistency of successful exits suggests deep familiarity with patrol timing.\n\n'At this point, they're operating like a business,' said observer {author}. 'A criminal one, but still a system.'\n\nCouncil members called for immediate deadlines on security upgrades, warning that delays only widen the confidence gap."
+                ],
+                "dialogue": [
+                    {
+                        "1": "Word is the robber's sitting on {money}.",
+                        "2": "That's more than half this tavern makes in a season.",
+                        "3": "And Blue Moon still calls it manageable."
+                    }
+                ]
+            },
+            {
+                "id": "medium_take",
+                "when": { "profit_min": 21, "profit_max": 59 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nBlue Moon recorded a mid-range loss estimated around ${profit} in the latest overnight robbery. Officials described the incident as serious but not catastrophic, though repeated medium-sized losses continue to pressure confidence.\n\n'It's not the biggest haul, but it's the same operational failure,' said analyst {author}. Merchants near the square say predictability in these incidents is becoming the bigger problem."
+                ],
+                "dialogue": [
+                    {
+                        "1": "Not huge, not tiny. {profit} exactly.",
+                        "2": "The kind of number accountants hate.",
+                        "3": "Big enough to panic. Small enough to downplay."
+                    }
+                ]
+            },
+            {
+                "id": "jackpot_night",
+                "when": { "profit_min": 100 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nA massive overnight hit left Blue Moon Bank facing one of its steepest single-night losses, estimated near ${profit}. Security footage reportedly shows rapid route-switching and precise timing at key intersections.\n\n'Every delay became a gift to the intruder,' said guard {author}. City officials announced emergency review meetings and immediate recommendations for vault-lane control."
+                ],
+                "dialogue": [
+                    {
+                        "1": "A hundred-plus in one run?",
+                        "2": "That's not theft, that's logistics.",
+                        "3": "Blue Moon's board just canceled lunch."
+                    },
+                    {
+                        "1": "The whole town heard about that haul.",
+                        "2": "Everyone except the people who were supposed to stop it.",
+                        "3": "Correct, and unfortunately hilarious."
+                    }
+                ]
+            },
+            {
+                "id": "early_spree",
+                "when": { "money_max": 60, "profit_min": 1 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nInvestigators say the robber's total is still relatively low at about ${money}, but each successful run appears cleaner than the last. Analysts warn that early consistency often matters more than headline totals.\n\n'You can see the pattern forming,' said observer {author}. 'Small wins become polished routines if no one interrupts them.'"
+                ],
+                "dialogue": [
+                    {
+                        "1": "They're still only at {money}.",
+                        "2": "Yeah, but they keep succeeding.",
+                        "3": "Momentum is expensive to ignore."
+                    }
+                ]
+            },
+            {
+                "id": "veteran_spree",
+                "when": { "money_min": 250, "profit_min": 30 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nWith total proceeds now estimated above ${money}, officials are calling the Blue Moon robberies a sustained criminal campaign. The latest gain of ${profit} reinforces concerns that defensive changes remain too slow.\n\n'At this scale, it's strategy, not luck,' said investigator {author}. Regional banks are reportedly reviewing their own patrol and response standards."
+                ],
+                "dialogue": [
+                    {
+                        "1": "Over {money} now? That's absurd.",
+                        "2": "And another {profit} on top.",
+                        "3": "At this point they're writing the bank's training manual."
+                    }
+                ]
+            },
+            {
+                "id": "shaft_detour_success",
+                "when": { "stopped_at_shaft": true, "profit_min": 1 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nInvestigators believe the robber took an unusual detour through the shaft route before finishing the run. The move appears to have disrupted pursuit long enough to preserve an estimated gain of ${profit}.\n\n'It wasn't just fast, it was weirdly deliberate,' said guard {author}. Analysts said unconventional route breaks are becoming a recurring tactic."
+                ],
+                "dialogue": [
+                    {
+                        "1": "They stopped by the shaft route and still escaped?",
+                        "2": "Yep. Side quest into a getaway lane.",
+                        "3": "Soup and strategy. Terrible combo for security."
+                    },
+                    {
+                        "1": "Wait, they took the soup-store detour?",
+                        "2": "Mid-heist snack break, apparently.",
+                        "3": "Blue Moon lost to both crime and cuisine."
+                    },
+                    {
+                        "1": "Detour through the shaft and still a clean exit.",
+                        "2": "That's confidence or madness.",
+                        "3": "At this point it's both."
+                    }
+                ]
+            },
+            {
+                "id": "speedrun_success",
+                "when": { "heist_duration_max": 45.0, "profit_min": 1 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nBlue Moon officials estimate the heist concluded in roughly {heist_duration} seconds, making it one of the fastest known runs. The suspect reportedly avoided prolonged contact and committed immediately to a short exit line.\n\n'If your response is slower than their plan, you lose before you move,' said analyst {author}."
+                ],
+                "dialogue": [
+                    {
+                        "1": "Done in {heist_duration} seconds?",
+                        "2": "That's not a robbery, that's a speedrun.",
+                        "3": "Blue Moon just got PB'd."
+                    },
+                    {
+                        "1": "{heist_duration} seconds and out.",
+                        "2": "Guards were still loading in.",
+                        "3": "Response time met reality. Reality won."
+                    },
+                    {
+                        "1": "That run looked scripted.",
+                        "2": "Fast enough to miss with your eyes open.",
+                        "3": "Blink once and the vault's history."
+                    },
+                    {
+                        "1": "The guards nearly stopped the escape.",
+                        "2": "Nearly?",
+                        "3": "The door disagreed."
+                    },
+                    {
+                        "1": "They almost caught the robber at the exit.",
+                        "2": "How close was it?",
+                        "3": "Close enough to smell the soup on him."
+                    }
+                ]
+            },
+            {
+                "id": "longhaul_success",
+                "when": { "heist_duration_min": 120.0, "profit_min": 1 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nThe latest successful robbery reportedly stretched to about {heist_duration} seconds, with multiple direction changes and sustained pursuit pressure. Despite the longer run, the suspect still exited with funds.\n\n'Long chases increase mistakes on both sides,' said guard {author}. 'This time ours hurt more.'"
+                ],
+                "dialogue": [
+                    {
+                        "1": "That run took forever and still worked.",
+                        "2": "Yeah, {heist_duration} seconds of chaos.",
+                        "3": "Turns out panic is a renewable resource."
+                    },
+                    {
+                        "1": "How do you chase for {heist_duration} seconds and lose?",
+                        "2": "By taking turns being confused.",
+                        "3": "Coordination is a premium feature at Blue Moon."
+                    },
+                    {
+                        "1": "Long heist, same ending.",
+                        "2": "More time means more mistakes.",
+                        "3": "Mostly ours, according to the report."
+                    }
+                ]
+            }
+        ]
+    },
+    "unsuccessful": {
+        "newspapers": [
+            "Article {rand}\nBy {author}\n\nBlue Moon Bank confirmed a failed robbery attempt overnight after guards intercepted the suspect before reaching a safe exit. Alarm synchronization and faster corridor response were cited as the key differences from prior incidents.\n\n'We finally got ahead of it this time,' said guard captain {author}. 'Teams held their lanes, and nobody broke formation.'\n\nOfficials say the suspect was detained on-site and transferred to city custody. Investigators are now reviewing equipment recovered at the scene and cross-referencing it with evidence from earlier robberies.\n\nBank leadership called the arrest significant but warned that broader process improvements will continue until independent auditors confirm long-term stability.",
+            "Article {rand}\nBy {author}\n\nThe latest heist attempt at Blue Moon Bank ended in arrest. Witnesses reported alarms, shouting, and a rapid guard response that blocked multiple routes simultaneously and forced the suspect into a controlled choke point.\n\n'They tried to run and got boxed in near the vault corridor,' said guard {author}. Supervisors stated that recent route adjustments and tighter communication discipline played a major role in the outcome.\n\nThe bank called the capture a turning point after weeks of successful robberies. Local leaders praised staff performance but emphasized that one successful defense does not erase structural weaknesses identified in earlier incidents.\n\nA formal post-incident report is expected to be released after internal review.",
+            "Article {rand}\nBy {author}\n\nAuthorities announced that the bank robber was caught during a failed overnight break-in at Blue Moon Bank. No staff or civilians were seriously injured, and officials say the suspect was restrained before reaching the outer perimeter.\n\n'This time, patrol timing worked exactly as planned,' said security lead {author}. 'We kept pressure on every turn until the route collapsed.'\n\nInvestigators are now reviewing seized materials and possible links to earlier incidents. Early statements suggest the suspect may have relied on previously observed guard gaps that no longer existed under revised patrol patterns.\n\nCity prosecutors confirmed charges are being prepared and hearings will begin once evidence intake is complete.",
+            "Article {rand}\nBy {author}\n\nA tense night at Blue Moon Bank ended with the suspect in handcuffs and no confirmed cash loss. Response teams initiated containment within seconds of the first trigger and maintained visual handoff until detention.\n\n'Our team held positions and cut off every lane out,' said responding officer {author}. Analysts noted that the bank's latest drill cycle appears to have improved reaction cohesion during high-pressure moments.\n\nCity officials praised the guards and said the case will move quickly through court. Community groups asked the bank to publish the safeguards that worked so they can be maintained after public attention fades.\n\nFor now, operations continue under elevated overnight protocols.",
+            "Article {rand}\nBy {author}\n\nAfter repeated raids, Blue Moon Bank reports the robber was finally caught during an unsuccessful attempt. Security teams say the suspect reached interior corridors but failed to secure a clean exit as containment tightened.\n\n'Nobody got hurt, and nobody got away,' guard {author} told reporters. Witnesses described a coordinated response that looked markedly different from prior incidents where pursuit lines broke down.\n\nBank leadership says additional security changes will remain in place despite the arrest, including revised watch schedules, stricter access sequencing, and expanded monitoring in known choke points.\n\nOfficials called the result encouraging but said continued vigilance is necessary in case copycat attempts follow."
+        ],
+        "dialogue": [
+            {
+                "1": "Did you hear about the robbery last night?",
+                "2": "Yeah. The guards finally caught the guy.",
+                "3": "Blue Moon Bank called it their greatest financial achievement."
+            },
+            {
+                "1": "Apparently the robber only made {profit}.",
+                "2": "Wait, that's a negative number.",
+                "3": "The parking ticket got him."
+            },
+            {
+                "1": "The suspect was caught fleeing the scene.",
+                "2": "How far did he get?",
+                "3": "About six feet. He pushed the pull door."
+            },
+            {
+                "1": "The guards reacted immediately this time.",
+                "2": "Seriously?",
+                "3": "Yeah, they woke up."
+            },
+            {
+                "1": "The robbery failed at exactly {rand} PM.",
+                "2": "What went wrong?",
+                "3": "The robber tripped over the 'Please Don't Rob Us' sign. Not even sure how he did that."
+            },
+            {
+                "1": "The bank says its new security measures worked.",
+                "2": "What security measures?",
+                "3": "Hiring guards that were technically conscious."
+            },
+            {
+                "1": "The robber tried escaping through the vault.",
+                "2": "Smart move?",
+                "3": "The vault was locked for the first time in history."
+            },
+            {
+                "1": "Who wrote the article about the failed robbery?",
+                "2": "{author}.",
+                "3": "That guy sounded genuinely disappointed."
+            },
+            {
+                "1": "The guards recovered all the stolen money.",
+                "2": "How much was it?",
+                "3": "{money}. The robber dropped half of it while panicking."
+            },
+            {
+                "1": "The sheriff called the arrest a huge success.",
+                "2": "For the police?",
+                "3": "No, for the bank's public image."
+            },
+            {
+                "1": "Apparently the robber surrendered immediately.",
+                "2": "Why?",
+                "3": "The teller asked him politely to stop."
+            },
+            {
+                "1": "The getaway vehicle never arrived.",
+                "2": "Car trouble?",
+                "3": "No, the driver quit mid-heist."
+            }
+        ],
+        "conditions": [
+            {
+                "id": "narrow_fail",
+                "when": { "profit_min": -25, "profit_max": -1 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nBlue Moon confirmed a failed robbery with limited financial fallout estimated near ${profit}. Guards intercepted the suspect before a clean exit, ending the attempt quickly and recovering the area within minutes.\n\n'It was close, but controlled,' said officer {author}. 'We didn't let the route open this time.'\n\nOfficials said the result is encouraging but warned that partial improvements are not a permanent fix."
+                ],
+                "dialogue": [
+                    {
+                        "1": "So they failed, but barely.",
+                        "2": "Yeah, {profit} barely moves the needle.",
+                        "3": "Still counts as an arrest. They'll take that win."
+                    }
+                ]
+            },
+            {
+                "id": "catastrophic_fail",
+                "when": { "profit_max": -75 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nA failed heist at Blue Moon ended with the suspect captured and a severe net loss estimated near ${profit}. Investigators said the getaway collapsed after repeated wrong turns and several deeply questionable decisions.\n\n'Once containment tightened, it was over,' said guard {author}. 'They had no clean line left.'\n\nAnalysts noted that this could break the robber's momentum after weeks of successful raids, though officials remain cautious about future attempts."
+                ],
+                "dialogue": [
+                    {
+                        "1": "That was a brutal loss: {profit}.",
+                        "2": "Yeah, that's not a setback, that's a crater.",
+                        "3": "Blue Moon finally got one good night out of this."
+                    },
+                    {
+                        "1": "They got caught and lost big.",
+                        "2": "Rough night for a professional.",
+                        "3": "Rough morning for their lawyer too."
+                    },
+                    {
+                        "1": "Apparently the escape route completely fell apart.",
+                        "2": "What happened?",
+                        "3": "Panic. Doors. Geometry."
+                    },
+                    {
+                        "1": "The guards described the robbery as 'unsalvageable.'",
+                        "2": "That sounds serious.",
+                        "3": "The robber ran into the same wall twice."
+                    },
+                    {
+                        "1": "The bank says confidence has been restored.",
+                        "2": "By catching one guy?",
+                        "3": "Their standards are low."
+                    }
+                ]
+            },
+            {
+                "id": "moderate_fail",
+                "when": { "profit_min": -74, "profit_max": -26 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nBlue Moon reported a moderate-loss failed robbery estimated around ${profit}. Security teams intercepted the suspect before full exit, preventing a larger collapse while still exposing response gaps.\n\n'Containment worked, but not instantly,' said officer {author}. Officials said post-incident adjustments will focus on closing delay windows near vault corridors."
+                ],
+                "dialogue": [
+                    {
+                        "1": "Not the worst loss, but still ugly.",
+                        "2": "{profit} is a bad night in any ledger.",
+                        "3": "Bad enough to hurt. Not bad enough to learn fast."
+                    }
+                ]
+            },
+            {
+                "id": "zeroed_out",
+                "when": { "money_max": 0 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nFollowing the failed attempt, estimates place the robber's available cash near ${money}, effectively wiping recent gains. Officials said rapid detention and full route denial prevented further escalation.\n\n'You don't see full resets often,' said analyst {author}. 'That changes behavior fast.'"
+                ],
+                "dialogue": [
+                    {
+                        "1": "They're down to {money} now?",
+                        "2": "Yep. From spree to broke overnight.",
+                        "3": "Blue Moon finally got a clean headline."
+                    }
+                ]
+            },
+            {
+                "id": "embarrassing_whiff",
+                "when": { "profit_min": -10, "profit_max": 0 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nA minor failed robbery at Blue Moon ended with little direct financial impact, estimated near ${profit}, but significant reputational noise. Witnesses described a short chase and a quick surrender.\n\n'It looked less like a master plan and more like a bad rehearsal,' said guard {author}."
+                ],
+                "dialogue": [
+                    {
+                        "1": "That fail barely moved the number.",
+                        "2": "Yeah, just enough to look silly.",
+                        "3": "Cheap lesson. Expensive embarrassment."
+                    }
+                ]
+            },
+            {
+                "id": "failed_but_still_rich",
+                "when": { "money_min": 120, "profit_max": -1 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nDespite the failed attempt, the suspect is still believed to hold around ${money}. Investigators warned that one bad night may not be enough to end a long-running spree.\n\n'Cash reserves change risk tolerance,' said observer {author}. 'Someone with that buffer can try again quickly.'"
+                ],
+                "dialogue": [
+                    {
+                        "1": "Caught once, still sitting on {money}.",
+                        "2": "So the story isn't over.",
+                        "3": "Nope. Just a rough chapter."
+                    }
+                ]
+            },
+            {
+                "id": "quick_catch",
+                "when": { "time_till_death_max": 20.0 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nBlue Moon security ended the attempted heist in roughly {time_till_death} seconds, marking one of the fastest captures on record. Officials credited early sighting and immediate lane denial.\n\n'Once they were spotted, it collapsed instantly,' said officer {author}."
+                ],
+                "dialogue": [
+                    {
+                        "1": "Caught in {time_till_death} seconds. Ouch.",
+                        "2": "That's a blink-and-you’re-booked record.",
+                        "3": "Fastest paperwork turnaround in town."
+                    },
+                    {
+                        "1": "{time_till_death} seconds and cuffs.",
+                        "2": "New personal worst.",
+                        "3": "At least it was efficient."
+                    },
+                    {
+                        "1": "They didn't even reach second gear.",
+                        "2": "Nope. Instant shutdown.",
+                        "3": "Blue Moon finally discovered urgency."
+                    }
+                ]
+            },
+            {
+                "id": "long_hunt_catch",
+                "when": { "time_till_death_min": 90.0, "profit_max": -1 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nAuthorities reported a prolonged pursuit lasting about {time_till_death} seconds before the suspect was finally captured. The extended chase exposed both improved endurance and persistent route uncertainty.\n\n'It took too long, but we finished it,' said guard {author}."
+                ],
+                "dialogue": [
+                    {
+                        "1": "That chase lasted {time_till_death} seconds.",
+                        "2": "Everyone got their cardio in.",
+                        "3": "Including the paperwork team."
+                    },
+                    {
+                        "1": "{time_till_death} seconds before capture is wild.",
+                        "2": "Long enough for three bad decisions each.",
+                        "3": "And one successful arrest somehow."
+                    },
+                    {
+                        "1": "They stretched that pursuit forever.",
+                        "2": "Felt like a parade route.",
+                        "3": "With less music and more shouting."
+                    }
+                ]
+            },
+            {
+                "id": "shaft_detour_fail",
+                "when": { "stopped_at_shaft": true, "profit_max": -1 },
+                "newspapers": [
+                    "Article {rand}\nBy {author}\n\nInvestigators say the suspect attempted a shaft-route detour before being caught, suggesting an effort to break pursuit patterns. The strategy failed to secure escape, and the run ended in custody.\n\n'Creative route, bad ending,' said officer {author}."
+                ],
+                "dialogue": [
+                    {
+                        "1": "They even tried the shaft detour and still got caught.",
+                        "2": "Detour to nowhere.",
+                        "3": "Soup stop, then cell block."
+                    },
+                    {
+                        "1": "Shaft route gamble failed hard.",
+                        "2": "Wrong shortcut, right handcuffs.",
+                        "3": "Creative routing, predictable ending."
+                    },
+                    {
+                        "1": "They thought soup_store was an escape line?",
+                        "2": "Turns out it's just a store.",
+                        "3": "And now it's a cautionary tale."
+                    },
+                    {
+                        "1": "I saw movement inside the soup store.",
+                        "2": "Probably the owner.",
+                        "3": "Hopefully."
+                    }
+                ]
+            }
+        ]
+    },
+    "caught": [
+        "Stop right there!\nHands where I can see them!\nYou're coming with me.",
+        "Thought you could outrun the law?\nClearly not.\nMove.",
+        "Well well well.\nLook who tripped the alarm.\nAgain.",
+        "The robbery's over.\nFor you, anyway.\nDrop the bag.",
+        "You really robbed the same bank twice?\nBold strategy.\nTerrible execution.",
+        "Freeze!\nUnless you're planning to sprint again.\nIn which case this gets funny.",
+        "We caught you red-handed.\nMostly because you were still holding the money.\nIdiot.",
+        "You have the right to remain silent.\nActually please use that right.\nI beg you.",
+        "That disguise would've worked.\nIf we were legally blind.\nTurn around.",
+        "The sheriff wants a word with you.\nSeveral words, actually.\nNone of them pleasant.",
+        "You picked the worst escape route imaginable.\nDead end.\nClassic.",
+        "The bank manager identified you immediately.\nApparently you're unforgettable.\nUnfortunately.",
+        "You're under arrest.\nAnd banned from the tavern.\nThat one usually hurts more.",
+        "Drop the weapon!\nOr whatever that thing is supposed to be.\nNow.",
+        "You made it about ten feet.\nNew town record.\nFor shortest escape.",
+        "The guards finally did their jobs today.\nUnlucky timing for you.\nHands up.",
+        "We've been looking for you all day.\nMostly because you kept bragging about the robbery.\nTurn around.",
+        "You smell like vault smoke and poor decisions.\nThat's usually a giveaway.\nLet's go.",
+        "The 'Please Don't Rob Us' sign was not a suggestion.\nApparently that needed clarification.\nYou're done.",
+        "Do you know how much paperwork this causes?\nHonestly that's the real crime.\nMove.",
+        "You would've escaped too.\nIf you didn't stop to buy soup.\nUnbelievable."
+    ],
+    "rob_lines": [
+        {"1": "Hands Up!", "2": "O-Okay, okay! That again?"},
+        {"1": "Nobody move!", "2": "Please don't point that at me."},
+        {"1": "This is a robbery!", "2": "I figured that out pretty fast."},
+        {"1": "Open the vault!", "2": "W-We don't even keep much in there!"},
+        {"1": "Give me the money!", "2": "Alright! Just stay calm!"},
+        {"1": "Stay where you are!", "2": "I wasn't planning on cardio today."},
+        {"1": "Nobody has to get hurt.", "2": "That is VERY reassuring coming from you."},
+        {"1": "Empty the register!", "2": "Okay! Okay! Just give me a second!"},
+        {"1": "Don't test me.", "2": "I'm trying VERY hard not to."},
+        {"1": "Move it!", "2": "I'm moving! I'm moving!"},
+        {"1": "Quick and easy.", "2": "It never is with you."},
+        {"1": "I know what I'm doing.", "2": "That somehow worries me more."},
+        {"1": "This'll all be over soon.", "2": "People said that last robbery too."},
+        {"1": "Open it NOW!", "2": "Y-You don't have to yell!"},
+        {"1": "No sudden movements!", "2": "You're the one sprinting around the lobby."}
+    ]
+}
