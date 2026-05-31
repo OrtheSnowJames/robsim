@@ -146,6 +146,11 @@
                 "1": "Do you think the bank likes being robbed?",
                 "2": "Probably not.",
                 "3": "It's happy to be stuck with us. (Totally not a Huey Lewis & The News reference)"
+            },
+            {
+                "1": "I broke into the robber's house yesterday.",
+                "2": "That's a bit hypocritical.",
+                "3": "That's what the karma was for."
             }
         ],
         "conditions": [
@@ -248,7 +253,7 @@
             {
                 "id": "monumental_heist",
                 "when": {
-                    "profit_min": 1000     
+                    "profit_min": 1000
                 },
                 "newspapers": [
                     "\"Article {rand}\\nBy {author}\\n\\nA robbery totaling approximately ${profit} has officially been classified as a Monumental Heist by Blue Moon authorities.\\n\\nInvestigators believe the suspect maintained momentum throughout the operation while avoiding several high-risk encounters. Security personnel described the escape as 'deeply upsetting' and 'surprisingly organized.'\\n\\n'We've never seen numbers like this before,' said guard {author}. 'Normally greed gets them first.'\\n\\nTown officials have scheduled an emergency meeting. The meeting is expected to last longer than the robbery.\"",
@@ -486,6 +491,11 @@
                 "1": "The getaway vehicle never arrived.",
                 "2": "Car trouble?",
                 "3": "No, the driver quit mid-heist."
+            },
+            {
+                "1": "I broke into the robber's house looking for treasure.",
+                "2": "What'd you find?",
+                "3": "Receipts."
             }
         ],
         "conditions": [
@@ -742,6 +752,78 @@
                 "1": "Why is the jail right next to the tavern?",
                 "2": "Convenient for repeat customers.",
                 "3": "Dinner AND sentencing."
+            }
+        ]
+    },
+    "intro": {
+        "newspapers": [
+            "Welcome Edition\nBy Town Desk\n\nBlue Moon Bank is open for business, the tavern is loud as usual, and local officials report no major overnight incidents. Guards say patrol routes are active, while residents remain cautiously optimistic that today will be uneventful.\n\nIn other news, the soup store is still closed, the road signs are still confusing, and the town council has once again postponed discussing infrastructure.",
+            "Morning Bulletin\nBy {author}\n\nTown services resumed on schedule this morning, with Blue Moon Bank reporting normal operations and no overnight disruptions. Residents say traffic around the square has been steady, if slightly confused by the new sign placement near the crossroads.\n\nMerchants are reminding visitors that most shops close before moonrise, except the tavern, which appears legally incapable of doing so.",
+            "Square Watch\nBy {author}\n\nLocal patrols completed their rounds without incident, according to officials at the east checkpoint. Blue Moon Bank staff described the night as 'boring in the best possible way,' while nearby businesses reported stable customer flow.\n\nCommunity notices for the week include bridge maintenance, soup inventory delays, and another public hearing on whether the jail needs a second chair.",
+            "Town Register\nBy {author}\n\nA calm evening across town left authorities with little to report beyond routine patrol logs and minor noise complaints near the tavern district. Bank representatives confirmed vault systems are functioning, doors are locked, and no emergency response was required.\n\nCivic leaders encouraged residents to enjoy the quiet while it lasts and to stop removing directional signs as a practical joke.",
+            "Public Notice\nBy {author}\n\nBlue Moon Bank and surrounding businesses opened this morning under normal conditions after an uneventful night. Shop owners described the atmosphere as relaxed, with steady foot traffic and no confirmed disturbances in the main lanes.\n\nMeanwhile, city staff announced updated lantern inspections and once again requested that citizens stop asking if the soup store is a strategic location.",
+            "Daily Ledger\nBy {author}\n\nOfficials described last night as unusually quiet, with no major alarms triggered and no emergency alerts issued in the downtown corridor. Blue Moon personnel stated all security checks passed during shift transitions.\n\nResidents welcomed the calm, though one council member warned that the town should not confuse silence with preparedness."
+        ],
+        "dialogue": [
+            {
+                "1": "You ever wonder who names the clouds?",
+                "2": "Nobody names clouds.",
+                "3": "That's why they all look confused."
+            },
+            {
+                "1": "I think that chair's haunted.",
+                "2": "It's a chair.",
+                "3": "That's exactly what it wants you to think."
+            },
+            {
+                "1": "How many ducks do you think it takes to run a tavern?",
+                "2": "Ducks can't run taverns.",
+                "3": "Neither can most tavern owners."
+            },
+            {
+                "1": "Do fish know they're wet?",
+                "2": "Probably not.",
+                "3": "Lucky."
+            },
+            {
+                "1": "I saw a squirrel carrying bread yesterday.",
+                "2": "That's normal.",
+                "3": "The squirrel looked guilty."
+            },
+            {
+                "1": "What's the difference between soup and stew?",
+                "2": "Ingredients, probably.",
+                "3": "Politics."
+            },
+            {
+                "1": "I tried counting the tavern floorboards.",
+                "2": "I counted the ceiling planks. About 43.",
+                "3": "I counted the idiots in here. About 3."
+            },
+            {
+                "1": "Do you think bears know they're bears?",
+                "2": "I don't know.",
+                "3": "The bank teller probably does."
+            },
+            {
+                "1": "I heard someone talking to a tree.",
+                "2": "What did the tree say?",
+                "3": "Nothing. It was a tree."
+            },
+            {
+                "1": "If a pie is cut into eight slices, is it still one pie?",
+                "2": "Yes.",
+                "3": "Good. I was worried."
+            },
+            {
+                "1": "What's your favorite season?",
+                "2": "Summer.",
+                "3": "Bold choice."
+            },
+            {
+                "1": "I once spent three hours looking for my hat.",
+                "2": "Where was it?",
+                "3": "On my head. Strong hiding place."
             }
         ]
     },

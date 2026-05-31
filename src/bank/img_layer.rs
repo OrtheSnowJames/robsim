@@ -295,6 +295,12 @@ const TILE_VISUAL_SPECS: &[TileVisualSpec] = &[
         with_collision: false,
     },
     TileVisualSpec {
+        identifier: "Water",
+        z: TOWN_ENTITY_Z - 1.5,
+        display_size: NORMAL_DISPLAY_SIZE,
+        with_collision: true,
+    },
+    TileVisualSpec {
         identifier: "BGround",
         z: TOWN_ENTITY_Z - 2.0,
         display_size: NORMAL_DISPLAY_SIZE,
@@ -461,6 +467,16 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         z: TOWN_ENTITY_Z,
         display_size: Some(Vec2::splat(64.0)),
         ldtk_center_x_from_top_left: true,
+        ldtk_center_y_from_top_left: true,
+        with_collision: true,
+        kind: EntityVisualKind::Generic
+    },
+    EntityVisualSpec {
+        identifier: "Bed",
+        image_path: "back_town/bed.png",
+        z: TOWN_ENTITY_Z,
+        display_size: Some(Vec2::new(16.0, 48.0)),
+        ldtk_center_x_from_top_left: false,
         ldtk_center_y_from_top_left: true,
         with_collision: true,
         kind: EntityVisualKind::Generic

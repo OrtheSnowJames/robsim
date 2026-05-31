@@ -5,12 +5,16 @@ use crate::player::Player;
 use crate::prompt_key::KeyPrompt;
 
 pub const CALLBACK_OPEN_NEWSPAPER: &str = "open_newspaper";
+pub const CALLBACK_OPEN_RECEIPTS: &str = "open_receipts";
 pub const NEWSPAPER_ENTITY_IDENTIFIER: &str = "Newspapers";
+pub const CHEST_ENTITY_IDENTIFIER: &str = "Chest";
 pub const NEWSPAPER_INTERACT_RADIUS: f32 = 20.0;
+pub const CHEST_INTERACT_RADIUS: f32 = 26.0;
 
 #[derive(Message, Clone, Copy)]
 pub enum EnterInteractCallbackEvent {
     OpenNewspaper(Entity),
+    OpenReceipts(Entity),
 }
 
 type EnterInteractCallback =
@@ -28,13 +32,26 @@ fn emit_open_newspaper(entity: Entity, writer: &mut MessageWriter<EnterInteractC
     writer.write(EnterInteractCallbackEvent::OpenNewspaper(entity));
 }
 
-const ENTER_INTERACT_SPECS: &[EnterInteractSpec] = &[EnterInteractSpec {
-    identifier: NEWSPAPER_ENTITY_IDENTIFIER,
-    radius: NEWSPAPER_INTERACT_RADIUS,
-    world_offset: Vec2::ZERO,
-    callback_key: CALLBACK_OPEN_NEWSPAPER,
-    callback: emit_open_newspaper,
-}];
+fn emit_open_receipts(entity: Entity, writer: &mut MessageWriter<EnterInteractCallbackEvent>) {
+    writer.write(EnterInteractCallbackEvent::OpenReceipts(entity));
+}
+
+const ENTER_INTERACT_SPECS: &[EnterInteractSpec] = &[
+    EnterInteractSpec {
+        identifier: NEWSPAPER_ENTITY_IDENTIFIER,
+        radius: NEWSPAPER_INTERACT_RADIUS,
+        world_offset: Vec2::ZERO,
+        callback_key: CALLBACK_OPEN_NEWSPAPER,
+        callback: emit_open_newspaper,
+    },
+    EnterInteractSpec {
+        identifier: CHEST_ENTITY_IDENTIFIER,
+        radius: CHEST_INTERACT_RADIUS,
+        world_offset: Vec2::ZERO,
+        callback_key: CALLBACK_OPEN_RECEIPTS,
+        callback: emit_open_receipts,
+    },
+];
 
 #[derive(Component)]
 struct EnterInteractTrigger {

@@ -193,6 +193,42 @@ impl TavernTalk {
 
         Self { newspaper, dialogue }
     }
+
+    pub fn from_intro_lines_object(json_val: Value) -> Option<Self> {
+        let intro = json_val.get("intro")?;
+        let dialogue_node = intro.get("dialogue")?;
+        let chosen_dialogue = if let Some(options) = dialogue_node.as_array() {
+            if options.is_empty() {
+                Value::Null
+            } else {
+                let idx = random_number(0..options.len() as i32) as usize;
+                options[idx].clone()
+            }
+        } else {
+            dialogue_node.clone()
+        };
+
+        let mut newspaper_pool = Vec::new();
+        if let Some(single) = intro.get("newspaper").and_then(Value::as_str) {
+            newspaper_pool.push(single.to_string());
+        }
+        newspaper_pool.extend(collect_newspaper_pool(intro));
+        let newspaper = if newspaper_pool.is_empty() {
+            "No newspaper article available.".to_string()
+        } else {
+            let idx = random_number(0..newspaper_pool.len() as i32) as usize;
+            newspaper_pool[idx].clone()
+        };
+
+        Some(Self {
+            newspaper,
+            dialogue: TavernDialogue {
+                guy1: pick_dialogue_line(&chosen_dialogue, &["1", "guy1"]),
+                guy2: pick_dialogue_line(&chosen_dialogue, &["2", "guy2"]),
+                bartender: pick_dialogue_line(&chosen_dialogue, &["3", "bartender"]),
+            },
+        })
+    }
 }
 
 fn choose_pool<T>(base: Vec<T>, conditional: Vec<T>, prefer_conditional: bool) -> Vec<T> {
@@ -461,7 +497,8 @@ fn load_tavern_talk_from_json(
     mut state: ResMut<TavernBubbleState>,
     mut newspaper_ui: ResMut<NewspaperUiState>,
     report: Res<LastHeistReport>,
-    cached: Res<CachedTavernTalk>,
+    mut cached: ResMut<CachedTavernTalk>,
+    mut receipt_cache: Option<ResMut<ReceiptCache>>,
     mut bank_icon: ResMut<BankIcon>,
     ldtk_entities: LdtkEntityByNameQuery,
     mut commands: Commands,
@@ -473,13 +510,18 @@ fn load_tavern_talk_from_json(
     if state.applied {
         return;
     }
-    let Some(report) = report.0 else {
-        return;
-    };
+    if report.0.is_none() && !state.applied {
+        let receipt = Receipt::default();
+        let lines_object = if let Some(cache) = receipt_cache.as_deref_mut() {
+            cache.get_or_build_lines_object(receipt)
+        } else {
+            receipt.lines_object()
+        };
+        cached.0 = lines_object.and_then(TavernTalk::from_intro_lines_object);
+    }
     let Some(talk) = &cached.0 else {
         return;
     };
-    let _ = report;
 
     newspaper_ui.article = talk.newspaper.clone();
     let guy1_line = if talk.dialogue.guy1.trim().is_empty() {
@@ -713,27 +755,46 @@ fn toggle_newspaper_ui(
 }
 
 fn handle_newspaper_entity_interact(
-    loaded_map: Res<LoadedMap>,
     mut events: MessageReader<EnterInteractCallbackEvent>,
     mut ui: ResMut<NewspaperUiState>,
+    receipt_cache: Option<Res<ReceiptCache>>,
     mut lock: ResMut<PlayerMovementLock>,
 ) {
-    if loaded_map_path(&loaded_map) != TAVERN_MAP_PATH {
-        return;
-    }
     for ev in events.read() {
-        let EnterInteractCallbackEvent::OpenNewspaper(entity) = *ev;
-        if ui.article.trim().is_empty() {
-            continue;
-        }
-        let _ = entity;
-        if ui.open && ui.receipt_index.is_none() {
-            ui.open = false;
-            lock.active = false;
-        } else {
-            ui.open = true;
-            ui.receipt_index = None;
-            lock.active = true;
+        match *ev {
+            EnterInteractCallbackEvent::OpenNewspaper(entity) => {
+                let _ = entity;
+                if ui.article.trim().is_empty() {
+                    continue;
+                }
+                if ui.open && ui.receipt_index.is_none() {
+                    ui.open = false;
+                    lock.active = false;
+                } else {
+                    ui.open = true;
+                    ui.receipt_index = None;
+                    lock.active = true;
+                }
+            }
+            EnterInteractCallbackEvent::OpenReceipts(entity) => {
+                let _ = entity;
+                let latest_idx = receipt_cache
+                    .as_deref()
+                    .and_then(|cache| cache.all().len().checked_sub(1));
+                let Some(idx) = latest_idx else {
+                    continue;
+                };
+                let Some(cache) = receipt_cache.as_deref() else {
+                    continue;
+                };
+                let Some(entry) = cache.all().get(idx) else {
+                    continue;
+                };
+                ui.article = format_receipt_text(&entry.receipt);
+                ui.receipt_index = Some(idx);
+                ui.open = true;
+                lock.active = true;
+            }
         }
     }
 }
