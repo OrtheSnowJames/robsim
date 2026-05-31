@@ -6,17 +6,46 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::player::Player;
+use super::scene::SceneChangeRequest;
 
 #[derive(SystemParam)]
 pub struct LdtkEntityByNameQuery<'w, 's> {
-    entities: Query<'w, 's, (Entity, &'static EntityInstance, &'static Transform)>,
+    entities: Query<
+        'w,
+        's,
+        (Entity, &'static EntityInstance, &'static Transform),
+        Without<Player>,
+    >,
+    parents: Query<'w, 's, &'static ChildOf>,
+    level_iids: Query<'w, 's, (Entity, &'static LevelIid), Without<Player>>,
 }
 
 impl<'w, 's> LdtkEntityByNameQuery<'w, 's> {
+    fn level_ancestor_iid(&self, entity: Entity) -> Option<String> {
+        let mut current = entity;
+        for _ in 0..16 {
+            let Ok(parent) = self.parents.get(current) else {
+                break;
+            };
+            let parent_entity = parent.parent();
+            if let Ok((_, iid)) = self.level_iids.get(parent_entity) {
+                return Some(iid.as_str().to_string());
+            }
+            current = parent_entity;
+        }
+        None
+    }
+
+    fn is_in_active_level(&self, entity: Entity) -> bool {
+        self.level_ancestor_iid(entity).is_some()
+    }
+
     pub fn first_named(&self, name: &str) -> Option<(Entity, &EntityInstance, &Transform)> {
         self.entities
             .iter()
-            .find(|(_, instance, _)| instance.identifier == name)
+            .find(|(entity, instance, _)| {
+                instance.identifier == name && self.is_in_active_level(*entity)
+            })
     }
 
     pub fn iter_named(
@@ -26,20 +55,54 @@ impl<'w, 's> LdtkEntityByNameQuery<'w, 's> {
         let target = name.to_string();
         self.entities
             .iter()
-            .filter(move |(_, instance, _)| instance.identifier == target)
+            .filter(move |(entity, instance, _)| {
+                instance.identifier == target && self.is_in_active_level(*entity)
+            })
+    }
+
+    pub fn iter_prefix(
+        &self,
+        prefix: &str,
+    ) -> impl Iterator<Item = (Entity, &EntityInstance, &Transform)> + '_ {
+        let target = prefix.to_string();
+        self.entities
+            .iter()
+            .filter(move |(entity, instance, _)| {
+                instance.identifier.starts_with(&target) && self.is_in_active_level(*entity)
+            })
+    }
+
+    pub fn iter_prefix_in_level(
+        &self,
+        prefix: &str,
+        level_iid: &str,
+    ) -> impl Iterator<Item = (Entity, &EntityInstance, &Transform)> + '_ {
+        let target = prefix.to_string();
+        let level_target = level_iid.to_string();
+        self.entities.iter().filter(move |(entity, instance, _)| {
+            instance.identifier.starts_with(&target)
+                && self
+                    .level_ancestor_iid(*entity)
+                    .map(|iid| iid == level_target)
+                    .unwrap_or(false)
+        })
     }
 }
 
 pub const TOWN_MAP_ASSET_PATH: &str = "maps/town.ldtk";
 const ROAD_COLLISION_VALUE: i32 = 1;
 const ROAD_COLLISION_LAYER: &str = "RoadCollision";
+const DEBUG_PLAYER_START: bool = true;
 
 pub struct MapPlugin;
 
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(LdtkPlugin);
+        app.add_message::<SceneChangeRequest>();
         app.init_resource::<LoadedMap>();
+        app.init_resource::<PendingPlayerStartScene>();
+        app.init_resource::<PlayerStartApplyState>();
         app.insert_resource(LevelSelection::index(0));
         app.register_ldtk_entity::<PlayerStartBundle>("PlayerStart");
         app.register_ldtk_int_cell_for_layer::<RoadCollisionBundle>(
@@ -79,6 +142,16 @@ pub struct LoadedMap {
     pub asset_path: String,
 }
 
+#[derive(Resource, Default, Clone)]
+pub struct PendingPlayerStartScene {
+    pub from_scene: Option<String>,
+}
+
+#[derive(Resource, Default, Clone)]
+struct PlayerStartApplyState {
+    last_applied_map: Option<String>,
+}
+
 impl Default for LoadedMap {
     fn default() -> Self {
         Self {
@@ -108,6 +181,14 @@ pub fn set_loaded_map(loaded_map: &mut LoadedMap, asset_path: impl Into<String>)
 
 pub fn loaded_map_path(loaded_map: &LoadedMap) -> &str {
     loaded_map.asset_path.as_str()
+}
+
+pub fn scene_tag_from_map_asset_path(asset_path: &str) -> String {
+    let raw = asset_path.trim();
+    let leaf = raw.rsplit('/').next().unwrap_or(raw);
+    leaf.strip_suffix(".ldtk")
+        .unwrap_or(leaf)
+        .to_ascii_lowercase()
 }
 
 fn spawn_initial_ldtk_world(mut commands: Commands, assets: Res<AssetServer>) {
@@ -140,18 +221,211 @@ fn materialize_transfer_portals(
 }
 
 fn apply_player_start(
+    loaded_map: Res<LoadedMap>,
     mut players: Query<&mut Transform, With<Player>>,
-    start_markers: Query<&Transform, (Added<PlayerStartMarker>, Without<Player>)>,
+    mut pending_scene: ResMut<PendingPlayerStartScene>,
+    mut apply_state: ResMut<PlayerStartApplyState>,
 ) {
-    let Ok(start_transform) = start_markers.single() else {
+    let current_map = loaded_map_path(&loaded_map).to_string();
+    let current_scene_tag = scene_tag_from_map_asset_path(&current_map);
+    let has_pending_scene = pending_scene.from_scene.is_some();
+
+    // During fade-out, pending `from_scene` is set before the map is swapped.
+    // If we're still on that source scene, do not apply starts yet.
+    if let Some(from_scene) = pending_scene.from_scene.as_deref() {
+        let from_scene_tag = scene_tag_from_map_asset_path(from_scene);
+        if current_scene_tag == from_scene_tag {
+            return;
+        }
+    }
+
+    let already_applied_for_map = apply_state
+        .last_applied_map
+        .as_deref()
+        .map(|m| m == current_map.as_str())
+        .unwrap_or(false);
+    if already_applied_for_map && !has_pending_scene {
+        return;
+    }
+
+    let mut default_start: Option<Vec2> = None;
+    let mut scene_matched_start: Option<Vec2> = None;
+
+    let desired_scene = pending_scene
+        .from_scene
+        .as_deref()
+        .map(scene_tag_from_map_asset_path);
+
+    let map_json = match read_map_json(&loaded_map) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let level = match map_json
+        .get("levels")
+        .and_then(Value::as_array)
+        .and_then(|levels| levels.first())
+    {
+        Some(level) => level,
+        None => return,
+    };
+    let current_level_iid = level
+        .get("iid")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let level_px_hei = level
+        .get("pxHei")
+        .and_then(Value::as_i64)
+        .map(|v| v as f32)
+        .unwrap_or(0.0);
+
+    if DEBUG_PLAYER_START {
+        if let Some(ref iid) = current_level_iid {
+            println!(
+                "[PlayerStart] Resolving starts for map `{}` level iid `{}`",
+                current_map, iid
+            );
+        } else {
+            println!(
+                "[PlayerStart] Could not read level iid from map `{}`; using active-level fallback",
+                current_map
+            );
+        }
+    }
+
+    let mut saw_start = false;
+    let Some(layer_instances) = level.get("layerInstances").and_then(Value::as_array) else {
         return;
     };
+    for layer in layer_instances {
+        let Some(entity_instances) = layer.get("entityInstances").and_then(Value::as_array) else {
+            continue;
+        };
+        for instance in entity_instances {
+            let Some(identifier) = instance.get("__identifier").and_then(Value::as_str) else {
+                continue;
+            };
+            if !identifier.starts_with("PlayerStart") {
+                continue;
+            }
+            saw_start = true;
+
+            let Some(px) = instance.get("px").and_then(Value::as_array) else {
+                continue;
+            };
+            let px_x = px.first().and_then(Value::as_i64).unwrap_or(0) as f32;
+            let px_y = px.get(1).and_then(Value::as_i64).unwrap_or(0) as f32;
+            let width = instance.get("width").and_then(Value::as_i64).unwrap_or(16) as f32;
+            let height = instance.get("height").and_then(Value::as_i64).unwrap_or(16) as f32;
+            let (pivot_x, pivot_y) = instance
+                .get("__pivot")
+                .and_then(Value::as_array)
+                .map(|pivot| {
+                    (
+                        pivot.first().and_then(Value::as_f64).unwrap_or(0.5) as f32,
+                        pivot.get(1).and_then(Value::as_f64).unwrap_or(0.5) as f32,
+                    )
+                })
+                .unwrap_or((0.5, 0.5));
+            // Match bevy_ecs_ldtk::utils::ldtk_pixel_coords_to_translation_pivoted.
+            let pos = Vec2::new(
+                px_x + (width * (0.5 - pivot_x)),
+                (level_px_hei - px_y) + (height * (pivot_y - 0.5)),
+            );
+
+            if identifier == "PlayerStart" {
+                if default_start.is_none() {
+                    default_start = Some(pos);
+                    if DEBUG_PLAYER_START {
+                        println!(
+                            "[PlayerStart] Found default PlayerStart in `{}` at ({:.1}, {:.1})",
+                            current_map, pos.x, pos.y
+                        );
+                    }
+                }
+                continue;
+            }
+
+            let scene_field = instance
+                .get("fieldInstances")
+                .and_then(Value::as_array)
+                .and_then(|fields| {
+                    fields.iter().find_map(|f| {
+                        let is_scene = f
+                            .get("__identifier")
+                            .and_then(Value::as_str)
+                            .map(|s| s == "scene")
+                            .unwrap_or(false);
+                        if !is_scene {
+                            return None;
+                        }
+                        f.get("__value")
+                            .and_then(Value::as_str)
+                            .map(|s| s.trim().to_string())
+                    })
+                });
+
+            let Some(scene_field) = scene_field else {
+                eprintln!(
+                    "PlayerStart variant `{}` missing required `scene` field; ignored.",
+                    identifier
+                );
+                continue;
+            };
+
+            if let Some(ref desired) = desired_scene {
+                let candidate_scene = scene_tag_from_map_asset_path(&scene_field);
+                if candidate_scene == *desired && scene_matched_start.is_none() {
+                    scene_matched_start = Some(pos);
+                    if DEBUG_PLAYER_START {
+                        println!(
+                            "[PlayerStart] Matched scene-tagged start `{}` for scene `{}` at ({:.1}, {:.1})",
+                            identifier, candidate_scene, pos.x, pos.y
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    if !saw_start {
+        if DEBUG_PLAYER_START {
+            eprintln!(
+                "[PlayerStart] No PlayerStart entities found for map `{}`",
+                current_map
+            );
+        }
+        apply_state.last_applied_map = Some(current_map);
+        return;
+    }
+
     let Ok(mut player_transform) = players.single_mut() else {
         return;
     };
 
-    player_transform.translation.x = start_transform.translation.x;
-    player_transform.translation.y = start_transform.translation.y;
+    let used_scene_match = scene_matched_start.is_some();
+    let chosen = scene_matched_start.or(default_start);
+    let Some(chosen_pos) = chosen else {
+        return;
+    };
+
+    if DEBUG_PLAYER_START {
+        if used_scene_match {
+            println!(
+                "[PlayerStart] Applying scene-matched spawn in `{}` at ({:.1}, {:.1})",
+                current_map, chosen_pos.x, chosen_pos.y
+            );
+        } else {
+            println!(
+                "[PlayerStart] Falling back to default PlayerStart in `{}` at ({:.1}, {:.1})",
+                current_map, chosen_pos.x, chosen_pos.y
+            );
+        }
+    }
+
+    player_transform.translation.x = chosen_pos.x;
+    player_transform.translation.y = chosen_pos.y;
+    pending_scene.from_scene = None;
+    apply_state.last_applied_map = Some(current_map);
 }
 
 pub fn load_or_spawn_ldtk_world(

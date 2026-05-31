@@ -1,0 +1,15 @@
+for a successful
+
+Blue Moon Bank
+~~~~~~~~~~~~~~
+(scribbles go here)
+Profit: $100
+Total: $200
+
+unsuccessful
+
+Blue Moon Bank
+~~~~~~~~~~~~~~
+(scribbles go here)
+Profit: -$100
+Total: $0

@@ -1,28 +1,29 @@
 use serde_json::Value;
-use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
 use rand::RngExt;
 use bevy::prelude::*;
 use bevy::text::{FontWeight, Justify};
-use rnglib::{RNG, Language};
 use crate::bank::img_layer::BankIcon;
+use crate::enter_interact::EnterInteractCallbackEvent;
 use crate::entity_dialogue::PlayerMovementLock;
 use crate::map::{loaded_map_path, LdtkEntityByNameQuery, LoadedMap};
+use crate::player::Player;
+use crate::receipts::{format_receipt_text, Receipt, ReceiptCache};
 use crate::text_bubble::TextBubble;
 
-const RAND_VAR_TO: i32 = 10;
 const TAVERN_MAP_PATH: &str = "maps/tavern.ldtk";
-const LINES_JSON_PATH: &str = "assets/lines.jsonc";
 const BANK_SIGN_TRIGGER_LINE: &str = "A slightly larger sign saying 'Please Don't Rob Us.'";
 const FORCE_PLEASE_DONT_ROB_US_SIGN: bool = false;
 const CONDITIONAL_POOL_PICK_CHANCE: f64 = 0.5;
+const RECEIPT_PANEL_WIDTH: f32 = 38.0;
+const DEFAULT_PANEL_WIDTH: f32 = 82.0;
+const PANEL_HEIGHT: f32 = 84.0;
 
 pub struct TavernPlugin;
 
 impl Plugin for TavernPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<HeistReportMessage>()
+            .add_message::<NewspaperUiMessage>()
             .init_resource::<LastHeistReport>()
             .init_resource::<TavernBubbleState>()
             .init_resource::<CachedTavernTalk>()
@@ -33,6 +34,8 @@ impl Plugin for TavernPlugin {
                 (
                     record_heist_report,
                     load_tavern_talk_from_json,
+                    handle_newspaper_ui_messages,
+                    handle_newspaper_entity_interact,
                     toggle_newspaper_ui,
                     apply_newspaper_ui_state,
                 ),
@@ -40,11 +43,36 @@ impl Plugin for TavernPlugin {
     }
 }
 
+#[derive(Message, Clone)]
+pub struct NewspaperUiMessage {
+    pub article: String,
+    pub open: bool,
+}
+
+pub fn show_newspaper_ui(writer: &mut MessageWriter<NewspaperUiMessage>, article: impl Into<String>) {
+    writer.write(NewspaperUiMessage {
+        article: article.into(),
+        open: true,
+    });
+}
+
+pub fn set_newspaper_ui(
+    writer: &mut MessageWriter<NewspaperUiMessage>,
+    article: impl Into<String>,
+    open: bool,
+) {
+    writer.write(NewspaperUiMessage {
+        article: article.into(),
+        open,
+    });
+}
+
 #[derive(Message, Clone, Copy)]
 pub struct HeistReportMessage {
     pub successful: bool,
     pub money: i32,
     pub profit: i32,
+    pub successful_robberies: u32,
     pub stopped_at_shaft: bool,
     pub time_till_death_secs: Option<f32>,
     pub heist_duration_secs: f32,
@@ -65,6 +93,7 @@ struct CachedTavernTalk(Option<TavernTalk>);
 struct NewspaperUiState {
     open: bool,
     article: String,
+    receipt_index: Option<usize>,
 }
 
 #[derive(Component)]
@@ -75,6 +104,9 @@ struct NewspaperHeadlineText;
 
 #[derive(Component)]
 struct NewspaperBodyText;
+
+#[derive(Component)]
+struct NewspaperPaperPanel;
 
 pub struct TavernDialogue {
     pub guy1: String,
@@ -92,60 +124,9 @@ fn random_number(range: std::ops::Range<i32>) -> i32 {
     rng.random_range(range)
 }
 
-fn random_name() -> String {
-    let rng = RNG::try_from(&Language::Elven).unwrap();
-    
-    let first_name = rng.generate_name();
-    let last_name = rng.generate_name();
-
-    format!("{} {}", first_name, last_name)
-}
-
 impl TavernTalk {
-    pub fn from_json(
-        json_str: String,
-        player_money: i32,
-        profit: i32,
-        successful: bool,
-        stopped_at_shaft: bool,
-        time_till_death_secs: Option<f32>,
-        heist_duration_secs: f32,
-    ) -> Self {
-        let mut json_str = json_str;
-
-        let mut list_to_replace: HashMap<String, String> = HashMap::new();
-        list_to_replace.insert(String::from("{money}"), player_money.to_string());
-        list_to_replace.insert(String::from("{profit}"), profit.to_string());
-        list_to_replace.insert(
-            String::from("{stopped_at_shaft}"),
-            if stopped_at_shaft { "yes".to_string() } else { "no".to_string() },
-        );
-        list_to_replace.insert(
-            String::from("{time_till_death}"),
-            time_till_death_secs
-                .map(|v| format!("{v:.1}"))
-                .unwrap_or_else(|| "N/A".to_string()),
-        );
-        list_to_replace.insert(
-            String::from("{heist_duration}"),
-            format!("{heist_duration_secs:.1}"),
-        );
-        list_to_replace.insert(String::from("{rand}"), random_number(0..RAND_VAR_TO).to_string());
-        list_to_replace.insert(String::from("{author}"), random_name());
-
-        for item in list_to_replace {
-            json_str = json_str.replace(item.0.as_str(), item.1.as_str());
-        }
-
-        // Accept jsonc-style files by dropping full-line comments.
-        let cleaned = json_str
-            .lines()
-            .filter(|line| !line.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let json_val: Value = serde_json::from_str(&cleaned).unwrap_or(Value::Null);
-        let first_index = if successful {
+    pub fn from_lines_object(json_val: Value, receipt: Receipt) -> Self {
+        let first_index = if receipt.successful {
             "successful"
         } else {
             "unsuccessful"
@@ -154,11 +135,12 @@ impl TavernTalk {
         let first = json_val.get(first_index).cloned().unwrap_or(Value::Null);
         let conditional_bucket = pick_condition_bucket(
             &first,
-            player_money,
-            profit,
-            stopped_at_shaft,
-            time_till_death_secs,
-            heist_duration_secs,
+            receipt.money,
+            receipt.profit,
+            receipt.successful_robberies,
+            receipt.stopped_at_shaft,
+            receipt.time_till_death_secs,
+            receipt.heist_duration_secs,
         );
         let prefer_conditional = rand::rng().random_bool(CONDITIONAL_POOL_PICK_CHANCE);
         let base_newspaper_pool = collect_newspaper_pool(&first);
@@ -178,16 +160,22 @@ impl TavernTalk {
             newspaper_pool[idx].clone()
         };
 
-        let base_dialogue_pool = collect_dialogue_pool(&first);
-        let conditional_dialogue_pool = conditional_bucket
-            .as_ref()
-            .map(collect_dialogue_pool)
-            .unwrap_or_default();
-        let dialogue_pool = choose_pool(
-            base_dialogue_pool,
-            conditional_dialogue_pool,
-            prefer_conditional,
-        );
+        // Dialogue pool order:
+        // 1) unconditional
+        // 2) successful/unsuccessful generic dialogue
+        // 3) conditional dialogue
+        // 4) random pick from final pool
+        let mut dialogue_pool = collect_unconditional_dialogue_pool(&first, &json_val);
+        dialogue_pool.extend(collect_dialogue_pool(&first));
+        dialogue_pool.extend(collect_matching_conditional_dialogue_pool(
+            &first,
+            receipt.money,
+            receipt.profit,
+            receipt.successful_robberies,
+            receipt.stopped_at_shaft,
+            receipt.time_till_death_secs,
+            receipt.heist_duration_secs,
+        ));
         let chosen_dialogue = if dialogue_pool.is_empty() {
             Value::Null
         } else {
@@ -225,6 +213,7 @@ fn pick_condition_bucket(
     root: &Value,
     player_money: i32,
     profit: i32,
+    successful_robberies: u32,
     stopped_at_shaft: bool,
     time_till_death_secs: Option<f32>,
     heist_duration_secs: f32,
@@ -237,6 +226,7 @@ fn pick_condition_bucket(
             cond,
             player_money,
             profit,
+            successful_robberies,
             stopped_at_shaft,
             time_till_death_secs,
             heist_duration_secs,
@@ -257,6 +247,7 @@ fn condition_matches(
     condition: &Value,
     player_money: i32,
     profit: i32,
+    successful_robberies: u32,
     stopped_at_shaft: bool,
     time_till_death_secs: Option<f32>,
     heist_duration_secs: f32,
@@ -285,6 +276,18 @@ fn condition_matches(
     if let Some(max) = when.get("money_max").and_then(Value::as_i64) {
         has_bound = true;
         if player_money > max as i32 {
+            return false;
+        }
+    }
+    if let Some(min) = when.get("successful_robberies_min").and_then(Value::as_u64) {
+        has_bound = true;
+        if u64::from(successful_robberies) < min {
+            return false;
+        }
+    }
+    if let Some(max) = when.get("successful_robberies_max").and_then(Value::as_u64) {
+        has_bound = true;
+        if u64::from(successful_robberies) > max {
             return false;
         }
     }
@@ -352,6 +355,45 @@ fn collect_dialogue_pool(node: &Value) -> Vec<Value> {
     }
 }
 
+fn collect_unconditional_dialogue_pool(scene_node: &Value, root: &Value) -> Vec<Value> {
+    if let Some(unconditional) = scene_node.get("unconditional") {
+        return collect_dialogue_pool(unconditional);
+    }
+    if let Some(unconditional) = root.get("unconditional") {
+        return collect_dialogue_pool(unconditional);
+    }
+    Vec::new()
+}
+
+fn collect_matching_conditional_dialogue_pool(
+    root: &Value,
+    player_money: i32,
+    profit: i32,
+    successful_robberies: u32,
+    stopped_at_shaft: bool,
+    time_till_death_secs: Option<f32>,
+    heist_duration_secs: f32,
+) -> Vec<Value> {
+    let Some(conditions) = root.get("conditions").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for cond in conditions {
+        if condition_matches(
+            cond,
+            player_money,
+            profit,
+            successful_robberies,
+            stopped_at_shaft,
+            time_till_death_secs,
+            heist_duration_secs,
+        ) {
+            out.extend(collect_dialogue_pool(cond));
+        }
+    }
+    out
+}
+
 fn pick_dialogue_line(dialogue_node: &Value, keys: &[&str]) -> String {
     let mut value_opt = None;
     for key in keys {
@@ -383,29 +425,35 @@ fn record_heist_report(
     mut report: ResMut<LastHeistReport>,
     mut state: ResMut<TavernBubbleState>,
     mut cached: ResMut<CachedTavernTalk>,
+    mut receipt_cache: Option<ResMut<ReceiptCache>>,
 ) {
     for msg in messages.read() {
         report.0 = Some(*msg);
-        if let Some(lines_json) = load_lines_json() {
-            cached.0 = Some(TavernTalk::from_json(
-                lines_json,
-                msg.money,
-                msg.profit,
-                msg.successful,
-                msg.stopped_at_shaft,
-                msg.time_till_death_secs,
-                msg.heist_duration_secs,
+        let receipt = Receipt {
+            successful: msg.successful,
+            money: msg.money,
+            profit: msg.profit,
+            successful_robberies: msg.successful_robberies,
+            failed_robberies: 0,
+            stopped_at_shaft: msg.stopped_at_shaft,
+            time_till_death_secs: msg.time_till_death_secs,
+            heist_duration_secs: msg.heist_duration_secs,
+        };
+        let lines_object = if let Some(cache) = receipt_cache.as_deref_mut() {
+            cache.get_or_build_lines_object(receipt)
+        } else {
+            receipt.lines_object()
+        };
+        if let Some(lines_object) = lines_object {
+            cached.0 = Some(TavernTalk::from_lines_object(
+                lines_object,
+                receipt,
             ));
         } else {
             cached.0 = None;
         }
         state.applied = false;
     }
-}
-
-fn load_lines_json() -> Option<String> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(LINES_JSON_PATH);
-    fs::read_to_string(path).ok()
 }
 
 fn load_tavern_talk_from_json(
@@ -496,6 +544,19 @@ fn load_tavern_talk_from_json(
     state.applied = applied_any;
 }
 
+fn handle_newspaper_ui_messages(
+    mut messages: MessageReader<NewspaperUiMessage>,
+    mut ui: ResMut<NewspaperUiState>,
+    mut lock: ResMut<PlayerMovementLock>,
+) {
+    for msg in messages.read() {
+        ui.article = msg.article.clone();
+        ui.open = msg.open;
+        ui.receipt_index = None;
+        lock.active = msg.open;
+    }
+}
+
 fn setup_newspaper_ui(mut commands: Commands) {
     commands
         .spawn((
@@ -518,8 +579,8 @@ fn setup_newspaper_ui(mut commands: Commands) {
             parent
                 .spawn((
                     Node {
-                        width: Val::Percent(82.0),
-                        height: Val::Percent(84.0),
+                        width: Val::Percent(DEFAULT_PANEL_WIDTH),
+                        height: Val::Percent(PANEL_HEIGHT),
                         flex_direction: FlexDirection::Column,
                         border: UiRect::all(Val::Px(3.0)),
                         padding: UiRect::all(Val::Px(16.0)),
@@ -528,6 +589,7 @@ fn setup_newspaper_ui(mut commands: Commands) {
                     },
                     BackgroundColor(Color::srgb(0.96, 0.94, 0.88)),
                     BorderColor::all(Color::BLACK),
+                    NewspaperPaperPanel,
                 ))
                 .with_children(|paper| {
                     paper.spawn((
@@ -578,32 +640,109 @@ fn split_headline_and_body(article: &str) -> (String, String) {
 fn toggle_newspaper_ui(
     keyboard: Res<ButtonInput<KeyCode>>,
     loaded_map: Res<LoadedMap>,
+    _player_q: Query<&Transform, With<Player>>,
+    _ldtk_entities: LdtkEntityByNameQuery,
     mut ui: ResMut<NewspaperUiState>,
+    receipt_cache: Option<Res<ReceiptCache>>,
     mut lock: ResMut<PlayerMovementLock>,
 ) {
+    let pressed_close = keyboard.just_pressed(KeyCode::Enter)
+        || keyboard.just_pressed(KeyCode::NumpadEnter)
+        || keyboard.just_pressed(KeyCode::Escape);
+
+    if keyboard.just_pressed(KeyCode::KeyR) {
+        let latest_idx = receipt_cache
+            .as_deref()
+            .and_then(|cache| cache.all().len().checked_sub(1));
+        if let Some(idx) = latest_idx {
+            if let Some(cache) = receipt_cache.as_deref() {
+                if let Some(entry) = cache.all().get(idx) {
+                    ui.article = format_receipt_text(&entry.receipt);
+                    ui.receipt_index = Some(idx);
+                    ui.open = true;
+                    lock.active = true;
+                }
+            }
+        }
+        return;
+    }
+
+    if ui.open && pressed_close {
+        ui.open = false;
+        ui.receipt_index = None;
+        lock.active = false;
+        return;
+    }
+
+    if ui.open {
+        if let Some(current_idx) = ui.receipt_index {
+            if let Some(cache) = receipt_cache.as_deref() {
+                let len = cache.all().len();
+                if len > 0 && keyboard.just_pressed(KeyCode::ArrowLeft) {
+                    let next = current_idx.saturating_sub(1);
+                    if let Some(entry) = cache.all().get(next) {
+                        ui.receipt_index = Some(next);
+                        ui.article = format_receipt_text(&entry.receipt);
+                    }
+                    return;
+                }
+                if len > 0 && keyboard.just_pressed(KeyCode::ArrowRight) {
+                    let next = (current_idx + 1).min(len.saturating_sub(1));
+                    if let Some(entry) = cache.all().get(next) {
+                        ui.receipt_index = Some(next);
+                        ui.article = format_receipt_text(&entry.receipt);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
     let in_tavern = loaded_map_path(&loaded_map) == TAVERN_MAP_PATH;
     if !in_tavern {
-        if ui.open {
+        // Keep receipt mode usable outside the tavern.
+        if ui.open && ui.receipt_index.is_none() {
             ui.open = false;
+            ui.receipt_index = None;
             lock.active = false;
         }
         return;
     }
 
-    let pressed_enter = keyboard.just_pressed(KeyCode::Enter)
-        || keyboard.just_pressed(KeyCode::NumpadEnter);
-    if !pressed_enter || ui.article.trim().is_empty() {
+    let _ = lock;
+}
+
+fn handle_newspaper_entity_interact(
+    loaded_map: Res<LoadedMap>,
+    mut events: MessageReader<EnterInteractCallbackEvent>,
+    mut ui: ResMut<NewspaperUiState>,
+    mut lock: ResMut<PlayerMovementLock>,
+) {
+    if loaded_map_path(&loaded_map) != TAVERN_MAP_PATH {
         return;
     }
-
-    ui.open = !ui.open;
-    lock.active = ui.open;
+    for ev in events.read() {
+        let EnterInteractCallbackEvent::OpenNewspaper(entity) = *ev;
+        if ui.article.trim().is_empty() {
+            continue;
+        }
+        let _ = entity;
+        if ui.open && ui.receipt_index.is_none() {
+            ui.open = false;
+            lock.active = false;
+        } else {
+            ui.open = true;
+            ui.receipt_index = None;
+            lock.active = true;
+        }
+    }
 }
 
 fn apply_newspaper_ui_state(
     ui: Res<NewspaperUiState>,
     mut lock: ResMut<PlayerMovementLock>,
     mut root_q: Query<&mut Visibility, With<NewspaperOverlayRoot>>,
+    mut panel_q: Query<&mut Node, With<NewspaperPaperPanel>>,
     mut text_qs: ParamSet<(
         Query<&mut Text, With<NewspaperHeadlineText>>,
         Query<&mut Text, With<NewspaperBodyText>>,
@@ -614,6 +753,14 @@ fn apply_newspaper_ui_state(
     };
 
     if ui.open {
+        if let Ok(mut panel) = panel_q.single_mut() {
+            panel.width = if ui.receipt_index.is_some() {
+                Val::Percent(RECEIPT_PANEL_WIDTH)
+            } else {
+                Val::Percent(DEFAULT_PANEL_WIDTH)
+            };
+            panel.height = Val::Percent(PANEL_HEIGHT);
+        }
         let (headline, body) = split_headline_and_body(&ui.article);
         {
             let mut headline_q = text_qs.p0();

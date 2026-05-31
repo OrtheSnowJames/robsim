@@ -1,7 +1,9 @@
 use bevy::prelude::*;
+use bevy::ui::widget::NodeImageMode;
 use bevy_ecs_ldtk::EntityInstance;
 
-use crate::map::{loaded_map_path, LoadedMap};
+use crate::map::{loaded_map_path, LoadedMap, SceneChangeRequest};
+use crate::nine_slicing::NineSliceBorder;
 use crate::player::Player;
 use crate::prompt_key::KeyPrompt;
 
@@ -16,6 +18,7 @@ impl Plugin for EntityDialoguePlugin {
             .init_resource::<TextboxMode>()
             .init_resource::<PlayerMovementLock>()
             .init_resource::<DialogueUiState>()
+            .init_resource::<DialogueEnabled>()
             .add_systems(Startup, setup_dialogue_ui)
             .add_systems(
                 Update,
@@ -25,6 +28,17 @@ impl Plugin for EntityDialoguePlugin {
                     apply_dialogue_ui_state,
                 ),
             );
+    }
+}
+
+#[derive(Resource)]
+pub struct DialogueEnabled {
+    pub enabled: bool
+}
+
+impl Default for DialogueEnabled {
+    fn default() -> Self {
+        Self { enabled: true }
     }
 }
 
@@ -48,6 +62,7 @@ struct EntityDialogueSpec {
     nodes: &'static [DialogueNode],
     interact_radius: f32,
     interact_offset: Vec2,
+    on_complete_scene: Option<&'static str>,
 }
 
 #[derive(Resource, Default)]
@@ -99,45 +114,51 @@ struct DialogueUiText;
 
 const BARTENDER_DIALOGUE: &[DialogueNode] = &[
     DialogueNode::Line {
-        text: "You looking for trouble or information?",
+        text: "You here for a drink or to stare at the wall in silence?",
         next: Some(1),
     },
     DialogueNode::YesNo {
-        prompt: "Need a tip for the bank job?",
+        prompt: "Want the house special?",
         yes_next: 2,
         no_next: 3,
     },
     DialogueNode::Line {
-        text: "Shift change is loud. Loud means blind spots.",
+        text: "Good choice. Tastes terrible, builds character.",
         next: None,
     },
     DialogueNode::Line {
-        text: "Then drink up and keep your head down.",
+        text: "Fair. Water's cheaper.",
         next: None,
     },
 ];
 
-const BAR_GUY_1_DIALOGUE: &[DialogueNode] = &[DialogueNode::Line {
-    text: "Blue Moon's guards patrol like clocks. Count the ticks.",
-    next: None,
-}];
+const BAR_GUY_1_DIALOGUE: &[DialogueNode] = &[
+    DialogueNode::Line {
+        text: "I counted 43 ceiling planks in here. Might've missed two.",
+        next: Some(1),
+    },
+    DialogueNode::Line {
+        text: "Don't ask why I counted. It was a long afternoon.",
+        next: None,
+    },
+];
 
 const BAR_GUY_2_DIALOGUE: &[DialogueNode] = &[
     DialogueNode::Line {
-        text: "You hear that alarm lately?",
+        text: "You ever hear a chair squeak and assume it's haunted?",
         next: Some(1),
     },
     DialogueNode::YesNo {
-        prompt: "Think the robber gets out again?",
+        prompt: "Do pickles belong on stew?",
         yes_next: 2,
         no_next: 3,
     },
     DialogueNode::Line {
-        text: "Yeah. City's too slow to close gaps.",
+        text: "Correct answer. Finally, a person of culture.",
         next: None,
     },
     DialogueNode::Line {
-        text: "Maybe. But luck runs out fast.",
+        text: "Wrong answer, but I'll forgive you this once.",
         next: None,
     },
 ];
@@ -188,6 +209,42 @@ const SOUP_DIALOGUE: &[DialogueNode] = &[
     },
 ];
 
+const JAIL_GUARD_DIALOGUE: &[DialogueNode] = &[
+    DialogueNode::YesNo {
+        prompt: "Do you wanna leave?",
+        yes_next: 1,
+        no_next: 4,
+    },
+    DialogueNode::YesNo {
+        prompt: "Are you sure you won't rob the bank anymore?",
+        yes_next: 2,
+        no_next: 3,
+    },
+    DialogueNode::Line {
+        text: "You're free to go!",
+        next: None,
+    },
+    DialogueNode::Line {
+        text: "Then you stay in here.",
+        next: None,
+    },
+    DialogueNode::Line {
+        text: "Then enjoy your cell.",
+        next: None,
+    },
+];
+
+const TELLER_DIALOGUE: &[DialogueNode] = &[
+    DialogueNode::Line {
+        text: "The guards are good at their jobs.",
+        next: Some(1),
+    },
+    DialogueNode::Line {
+        text: "I wish the rest of us were.",
+        next: None,
+    },
+];
+
 const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
     EntityDialogueSpec {
         identifier: "Bartender",
@@ -195,6 +252,7 @@ const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
         nodes: BARTENDER_DIALOGUE,
         interact_radius: INTERACT_RADIUS,
         interact_offset: Vec2::ZERO,
+        on_complete_scene: None,
     },
     EntityDialogueSpec {
         identifier: "Bear",
@@ -202,20 +260,23 @@ const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
         nodes: BARTENDER_DIALOGUE,
         interact_radius: INTERACT_RADIUS,
         interact_offset: Vec2::ZERO,
+        on_complete_scene: None,
     },
     EntityDialogueSpec {
         identifier: "Teller",
         start: 0,
-        nodes: BARTENDER_DIALOGUE,
+        nodes: TELLER_DIALOGUE,
         interact_radius: INTERACT_RADIUS,
         interact_offset: Vec2::ZERO,
+        on_complete_scene: None,
     },
     EntityDialogueSpec {
         identifier: "Bank_teller",
         start: 0,
-        nodes: BARTENDER_DIALOGUE,
+        nodes: TELLER_DIALOGUE,
         interact_radius: INTERACT_RADIUS,
         interact_offset: Vec2::ZERO,
+        on_complete_scene: None,
     },
     EntityDialogueSpec {
         identifier: "Bar_guy_1",
@@ -223,6 +284,7 @@ const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
         nodes: BAR_GUY_1_DIALOGUE,
         interact_radius: INTERACT_RADIUS,
         interact_offset: Vec2::ZERO,
+        on_complete_scene: None,
     },
     EntityDialogueSpec {
         identifier: "Bar_guy_2",
@@ -230,6 +292,7 @@ const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
         nodes: BAR_GUY_2_DIALOGUE,
         interact_radius: INTERACT_RADIUS,
         interact_offset: Vec2::ZERO,
+        on_complete_scene: None,
     },
     EntityDialogueSpec {
         identifier: "Soup_store",
@@ -239,6 +302,7 @@ const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
         // LDtk entity transforms are top-left aligned in some setups;
         // soup store visual is 64x64, so anchor prompt/dialogue near visual center/front.
         interact_offset: Vec2::new(0.0, -32.0),
+        on_complete_scene: None,
     },
     EntityDialogueSpec {
         identifier: "Soup",
@@ -246,14 +310,24 @@ const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
         nodes: SOUP_DIALOGUE,
         interact_radius: INTERACT_RADIUS,
         interact_offset: Vec2::ZERO,
+        on_complete_scene: None,
     },
     EntityDialogueSpec {
         identifier: "Soup_guy",
         start: 0,
         nodes: SOUP_MAN_DIALOGUE,
         interact_radius: INTERACT_RADIUS,
-        interact_offset: Vec2::ZERO
-    }
+        interact_offset: Vec2::ZERO,
+        on_complete_scene: None,
+    },
+    EntityDialogueSpec {
+        identifier: "Jail_guard",
+        start: 0,
+        nodes: JAIL_GUARD_DIALOGUE,
+        interact_radius: INTERACT_RADIUS,
+        interact_offset: Vec2::ZERO,
+        on_complete_scene: Some("maps/town.ldtk"),
+    },
 ];
 
 fn find_spec_index(identifier: &str) -> Option<usize> {
@@ -279,7 +353,7 @@ fn clear_dialogue_text(ui: &mut DialogueUiState) {
     ui.text.clear();
 }
 
-fn setup_dialogue_ui(mut commands: Commands) {
+fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn((
             DialogueUiRoot,
@@ -290,11 +364,22 @@ fn setup_dialogue_ui(mut commands: Commands) {
                 bottom: Val::Px(20.0),
                 min_height: Val::Px(96.0),
                 padding: UiRect::all(Val::Px(12.0)),
-                border: UiRect::all(Val::Px(3.0)),
+                border: UiRect::all(Val::Px(0.0)),
                 ..default()
             },
-            BackgroundColor(Color::BLACK),
-            BorderColor::all(Color::WHITE),
+            BackgroundColor(Color::NONE),
+            BorderColor::all(Color::NONE),
+            ImageNode::new(asset_server.load("bubble.png")).with_mode(NodeImageMode::Sliced(
+                TextureSlicer {
+                    border: BorderRect::all(6.0),
+                    center_scale_mode: SliceScaleMode::Stretch,
+                    sides_scale_mode: SliceScaleMode::Stretch,
+                    max_corner_scale: 1.0,
+                },
+            )),
+            NineSliceBorder {
+                border_insets: Vec4::splat(6.0),
+            },
             Visibility::Hidden,
             ZIndex(9999),
         ))
@@ -309,6 +394,7 @@ fn setup_dialogue_ui(mut commands: Commands) {
                 TextColor(Color::WHITE),
             ));
         });
+    info!("Dialogue UI uses bubble.png with 6px nine-slice border.");
 }
 
 fn apply_dialogue_ui_state(
@@ -334,7 +420,18 @@ fn apply_dialogue_ui_state(
 fn attach_dialogue_prompts(
     mut commands: Commands,
     query: Query<(Entity, &EntityInstance), (Added<EntityInstance>, Without<DialoguePromptAttached>)>,
+    has_query: Query<Entity, With<DialoguePromptAttached>>,
+    dialogue_enabled: Res<DialogueEnabled>,
 ) {
+    if !dialogue_enabled.enabled {
+        for entity in has_query.iter() {
+            commands
+                .entity(entity)
+                .remove::<KeyPrompt>()
+                .remove::<DialoguePromptAttached>();
+        }
+    }
+
     for (entity, instance) in &query {
         if let Some(spec_idx) = find_spec_index(&instance.identifier) {
             let spec = ENTITY_DIALOGUE_SPECS[spec_idx];
@@ -358,10 +455,16 @@ fn handle_entity_dialogue(
     textbox_mode: Res<TextboxMode>,
     player_q: Query<&Transform, With<Player>>,
     entities: Query<(Entity, &EntityInstance, &Transform)>,
+    dialogue_enabled: Res<DialogueEnabled>,
     mut active: ResMut<ActiveDialogue>,
     mut lock: ResMut<PlayerMovementLock>,
     mut ui: ResMut<DialogueUiState>,
+    mut scene_change: MessageWriter<SceneChangeRequest>,
 ) {
+    if !dialogue_enabled.enabled {
+        return; 
+    }
+
     if let Some(source_map) = &active.hold_until_map_change_from {
         lock.active = true;
         if loaded_map_path(&loaded_map) != source_map {
@@ -405,6 +508,11 @@ fn handle_entity_dialogue(
                         }
                     } else {
                         active.session = None;
+                        if let Some(scene) = spec.on_complete_scene {
+                            scene_change.write(SceneChangeRequest {
+                                asset_path: scene.to_string(),
+                            });
+                        }
                         if textbox_mode.0 == TextboxCloseMode::OnMapChange {
                             active.hold_until_map_change_from =
                                 Some(loaded_map_path(&loaded_map).to_string());

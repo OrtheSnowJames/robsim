@@ -14,7 +14,8 @@ pub use collision::{
 };
 
 pub use scene::{
-    handle_guard_capture, handle_maze_exit, setup_camera_and_fade, sync_scene_fade_overlay,
-    trigger_scene_transfer, update_scene_transition, HeistRunStats, SceneFadeOverlay,
-    SceneTransferCooldown, SceneTransitionState,
+    handle_guard_capture, handle_maze_exit, handle_scene_change_request, setup_camera_and_fade,
+    sync_scene_fade_overlay, trigger_scene_transfer, update_scene_transition, HeistRunStats,
+    HeistLifetimeStats, SceneChangeRequest, SceneFadeOverlay, SceneTransferCooldown,
+    SceneTransitionState,
 };

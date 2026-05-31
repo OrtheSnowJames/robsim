@@ -8,6 +8,9 @@ pub mod sprite_sheet;
 pub mod text_bubble;
 pub mod tavern;
 pub mod entity_dialogue;
+pub mod nine_slicing;
+pub mod receipts;
+pub mod enter_interact;
 
 use bevy::math::Vec2;
 use rand::{RngExt, prelude::ThreadRng};

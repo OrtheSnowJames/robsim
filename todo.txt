@@ -1,16 +1,3 @@
-robbing mechanics
-    [x] initiate robbing by breaking into vault
-    [x] vault procedural gen
-    [] minimap with close range
-    [x] guards you have to avoid
-    [] newspaper
-
-[] guard sprites
-[] more bank logos
-[x] normal bank
-
-restructure maze light
-    [] guards have flashlight
-    [] basic minimap
-    [] actually cannot see other things
-    
+newspaper office []
+house []
+receipts []

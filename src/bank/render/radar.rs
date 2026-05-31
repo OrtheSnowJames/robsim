@@ -15,7 +15,10 @@ const RADAR_BG_ALPHA: u8 = 0;
 const RADAR_GREEN_R: u8 = 55;
 const RADAR_GREEN_G: u8 = 220;
 const RADAR_GREEN_B: u8 = 90;
+const RADAR_FLOOR_ALPHA: u8 = 20;
 const RADAR_WALL_ALPHA: u8 = 55;
+const RADAR_ENTRANCE_ALPHA: u8 = 180;
+const RADAR_EXIT_ALPHA: u8 = 230;
 const RADAR_GUARD_ALPHA: u8 = 185;
 const RADAR_PLAYER_ALPHA: u8 = 255;
 
@@ -221,6 +224,17 @@ fn update_radar_canvas(
             let mut color = (RADAR_GREEN_R, RADAR_GREEN_G, RADAR_GREEN_B);
             if tile == GridType::WALL as u8 {
                 alpha = RADAR_WALL_ALPHA;
+            } else if tile == GridType::FLOOR as u8
+                || tile == GridType::COIN as u8
+                || tile == GridType::HIDE as u8
+            {
+                alpha = RADAR_FLOOR_ALPHA;
+            } else if tile == GridType::ENTRANCE as u8 {
+                alpha = RADAR_ENTRANCE_ALPHA;
+                color = (120, 255, 160);
+            } else if tile == GridType::EXIT as u8 {
+                alpha = RADAR_EXIT_ALPHA;
+                color = (255, 140, 80);
             }
             if tile == GridType::SHAFT as u8 {
                 alpha = RADAR_PLAYER_ALPHA;

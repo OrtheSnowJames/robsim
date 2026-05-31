@@ -1,9 +1,10 @@
 use crate::bank::render::maze::MazeTile;
 use crate::collision::BoundingBox;
 use crate::entity_dialogue::PlayerMovementLock;
+use crate::bank::img_layer::LockGlobalZ;
 use crate::sprite_sheet::{
-    apply_animator_to_sprite, facing_and_movement_from_input, make_sprite_with_animator,
-    tick_animator, Facing, SpriteSheetAnimator, SpriteSheetConfig,
+    Facing, SpriteSheetAnimator, SpriteSheetConfig, apply_animator_to_sprite,
+    facing_and_movement_from_input, make_sprite_with_animator, tick_animator,
 };
 use bevy::prelude::*;
 
@@ -19,6 +20,7 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_player);
         app.add_systems(Update, move_player.in_set(PlayerSystemSet::Move));
+        app.add_systems(Update, check_global_z);
         app.add_systems(
             PostUpdate,
             follow_player_camera
@@ -74,7 +76,7 @@ pub struct PlayerAnimState {
 }
 
 pub fn get_player_sheet(
-    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) -> Handle<TextureAtlasLayout> {
     let sheet = SpriteSheetConfig::simple_4dir_rows(16, 3, 3, 0, 1, 2, 0.15);
     sheet.layout(&mut texture_atlas_layouts)
@@ -96,10 +98,7 @@ pub fn setup_player(
 
     commands.spawn((
         Player,
-        PlayerAnimState {
-            sheet,
-            animator,
-        },
+        PlayerAnimState { sheet, animator },
         sprite,
         Transform::from_xyz(0.0, -80.0, PLAYER_Z_LAYER),
     ));
@@ -174,11 +173,7 @@ pub fn move_player(
         anim.animator.walking = false;
     }
     let walk_frames = anim.sheet.walk_frames();
-    tick_animator(
-        &mut anim.animator,
-        time.delta_secs(),
-        walk_frames,
-    );
+    tick_animator(&mut anim.animator, time.delta_secs(), walk_frames);
     apply_animator_to_sprite(&mut sprite, &anim.sheet, &anim.animator);
 }
 
@@ -195,4 +190,92 @@ pub fn follow_player_camera(
 
     camera_transform.translation.x = player_transform.translation.x;
     camera_transform.translation.y = player_transform.translation.y;
+}
+
+fn check_global_z(
+    player_query: Query<(Entity, &GlobalTransform, Option<&Name>), With<Player>>,
+    named_query: Query<(Entity, &GlobalTransform, Option<&Name>), Without<Player>>,
+    local_tf_query: Query<&Transform>,
+    lock_z_query: Query<&LockGlobalZ>,
+    parent_query: Query<&ChildOf>,
+    parent_global_query: Query<&GlobalTransform>,
+    children_query: Query<&Children>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    if !keyboard_input.pressed(KeyCode::Equal) {
+        return;
+    }
+
+    for (entity, global_transform, name) in player_query.iter() {
+        let name_str = name.map(|n| n.as_str()).unwrap_or("Player");
+        let global_z = global_transform.translation().z;
+        println!(
+            "Entity: {:?} ({}), Global Z: {}, Local Z: {}",
+            entity,
+            name_str,
+            global_z,
+            local_tf_query.get(entity).map(|t| t.translation.z).unwrap_or(0.0)
+        );
+    }
+
+    // Also print likely bars/tileset actors so their render order can be debugged.
+    for (entity, global_transform, name) in named_query.iter() {
+        let Some(name) = name else {
+            continue;
+        };
+        let name_str = name.as_str();
+        let lower = name_str.to_ascii_lowercase();
+        if !lower.contains("bar")
+            && !lower.contains("jail")
+            && !lower.contains("tile")
+            && !lower.contains("layer")
+        {
+            continue;
+        }
+
+        let global_z = global_transform.translation().z;
+        let local_z = local_tf_query
+            .get(entity)
+            .map(|t| t.translation.z)
+            .unwrap_or(0.0);
+        let lock_target = lock_z_query.get(entity).ok().map(|z| z.0);
+        let parent_info = parent_query
+            .get(entity)
+            .ok()
+            .and_then(|p| {
+                let parent_e = p.parent();
+                parent_global_query
+                    .get(parent_e)
+                    .ok()
+                    .map(|pg| (parent_e, pg.translation().z))
+            });
+
+        println!(
+            "Entity: {:?} ({}), Global Z: {}, Local Z: {}, LockGlobalZ: {:?}, Parent: {:?}",
+            entity, name_str, global_z, local_z, lock_target, parent_info
+        );
+
+        if let Some((parent_e, parent_global_z)) = parent_info {
+            let expected_global_z = parent_global_z + local_z;
+            println!(
+                "  Parent {:?} Global Z: {}, expected child global from local: {}",
+                parent_e, parent_global_z, expected_global_z
+            );
+
+            if let Ok(grand_parent) = parent_query.get(parent_e) {
+                let gp_e = grand_parent.parent();
+                if let Ok(gp_gt) = parent_global_query.get(gp_e) {
+                    println!(
+                        "  GrandParent {:?} Global Z: {}",
+                        gp_e,
+                        gp_gt.translation().z
+                    );
+                }
+            }
+        }
+
+        if let Ok(children) = children_query.get(entity) {
+            println!("  Children count: {}", children.len());
+        }
+    }
 }

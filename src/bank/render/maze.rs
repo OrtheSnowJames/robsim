@@ -144,7 +144,7 @@ pub fn render_maze(
                             custom_size: Some(Vec2::splat(TILE_SIZE)),
                             ..default()
                         },
-                        Transform::from_xyz(0.0, 0.0, 0.1),
+                        Transform::from_xyz(0.0, 0.0, crate::player::PLAYER_Z_LAYER + 0.5),
                     ));
                 });
             } else if tile == GridType::SHAFT as u8 {

@@ -15,6 +15,7 @@ use crate::bank::BankBuilding;
 use crate::bank::render::maze::TILE_SIZE;
 use crate::bank::teller::{TellerSprite, VaultSprite};
 use crate::collision::BoundingBox;
+use crate::player::PLAYER_Z_LAYER;
 
 fn combine_images(base: &Image, overlay: &Image) -> Image {
     // 1. Create a copy of the base image data to work on
@@ -176,9 +177,7 @@ pub fn get_bank_img(
     }
     let icon_cache = BANK_ICON_HANDLE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     let icon_img: Handle<Image> = if let Ok(mut icons) = icon_cache.lock() {
-        if icon_path == "bank/moon.png" {
-            assets.load(icon_path)
-        } else if let Some(existing) = icons.get(&opt.icon) {
+        if let Some(existing) = icons.get(&opt.icon) {
             existing.clone()
         } else {
             let loaded: Handle<Image> = assets.load(icon_path);
@@ -255,6 +254,9 @@ pub fn randomize_bank_img(
 #[derive(Component)]
 pub struct BankSprite;
 
+#[derive(Component)]
+pub struct LockGlobalZ(pub f32);
+
 #[derive(Clone, Copy)]
 enum EntityVisualKind {
     Generic,
@@ -273,7 +275,45 @@ struct EntityVisualSpec {
     kind: EntityVisualKind,
 }
 
+#[derive(Clone, Copy)]
+pub struct TileVisualSpec {
+    pub identifier: &'static str,
+    pub z: f32,
+    pub display_size: Option<Vec2>,
+    pub with_collision: bool,
+}
+
 const TOWN_ENTITY_Z: f32 = 6.0;
+const IN_FRONT_OF_PLAYER_Z: f32 = PLAYER_Z_LAYER + 0.5;
+const NPC_IN_FRONT_OF_VAULT_Z: f32 = TOWN_ENTITY_Z + 0.25;
+const NORMAL_DISPLAY_SIZE: Option<Vec2> = Some(Vec2::splat(TILE_SIZE));
+const TILE_VISUAL_SPECS: &[TileVisualSpec] = &[
+    TileVisualSpec {
+        identifier: "Road",
+        z: TOWN_ENTITY_Z - 1.0,
+        display_size: NORMAL_DISPLAY_SIZE,
+        with_collision: false,
+    },
+    TileVisualSpec {
+        identifier: "BGround",
+        z: TOWN_ENTITY_Z - 2.0,
+        display_size: NORMAL_DISPLAY_SIZE,
+        with_collision: false,
+    },
+    TileVisualSpec {
+        identifier: "Bars",
+        z: IN_FRONT_OF_PLAYER_Z,
+        display_size: NORMAL_DISPLAY_SIZE,
+        with_collision: false
+    }
+];
+
+pub fn tile_visual_spec(identifier: &str) -> Option<&'static TileVisualSpec> {
+    TILE_VISUAL_SPECS
+        .iter()
+        .find(|spec| spec.identifier.eq_ignore_ascii_case(identifier))
+}
+
 const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
     EntityVisualSpec {
         identifier: "Bank",
@@ -308,7 +348,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
     EntityVisualSpec {
         identifier: "Bear",
         image_path: "bank/bank_teller_relaxed.png",
-        z: TOWN_ENTITY_Z,
+        z: NPC_IN_FRONT_OF_VAULT_Z,
         display_size: Some(Vec2::new(48.0, 16.0)),
         ldtk_center_x_from_top_left: true,
         ldtk_center_y_from_top_left: false,
@@ -318,7 +358,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
     EntityVisualSpec {
         identifier: "Teller",
         image_path: "bank/bank_teller_relaxed.png",
-        z: TOWN_ENTITY_Z,
+        z: NPC_IN_FRONT_OF_VAULT_Z,
         display_size: Some(Vec2::new(48.0, 16.0)),
         ldtk_center_x_from_top_left: true,
         ldtk_center_y_from_top_left: false,
@@ -328,7 +368,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
     EntityVisualSpec {
         identifier: "Bank_teller",
         image_path: "bank/bank_teller_relaxed.png",
-        z: TOWN_ENTITY_Z,
+        z: NPC_IN_FRONT_OF_VAULT_Z,
         display_size: Some(Vec2::new(48.0, 16.0)),
         ldtk_center_x_from_top_left: true,
         ldtk_center_y_from_top_left: false,
@@ -388,6 +428,36 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
     EntityVisualSpec {
         identifier: "Soup",
         image_path: "soup.png",
+        z: TOWN_ENTITY_Z,
+        display_size: Some(Vec2::splat(64.0)),
+        ldtk_center_x_from_top_left: true,
+        ldtk_center_y_from_top_left: true,
+        with_collision: true,
+        kind: EntityVisualKind::Generic
+    },
+    EntityVisualSpec {
+        identifier: "Jail",
+        image_path: "jail.png",
+        z: IN_FRONT_OF_PLAYER_Z,
+        display_size: Some(Vec2::splat(64.0)),
+        ldtk_center_x_from_top_left: false,
+        ldtk_center_y_from_top_left: false,
+        with_collision: false,
+        kind: EntityVisualKind::Generic
+    },
+    EntityVisualSpec {
+        identifier: "Bars",
+        image_path: "jail.png",
+        z: IN_FRONT_OF_PLAYER_Z,
+        display_size: Some(Vec2::splat(64.0)),
+        ldtk_center_x_from_top_left: false,
+        ldtk_center_y_from_top_left: false,
+        with_collision: false,
+        kind: EntityVisualKind::Generic
+    },
+    EntityVisualSpec {
+        identifier: "House",
+        image_path: "house.png",
         z: TOWN_ENTITY_Z,
         display_size: Some(Vec2::splat(64.0)),
         ldtk_center_x_from_top_left: true,
@@ -472,14 +542,19 @@ pub fn materialize_ldtk_entity_sprites(
             instance.width as f32,
             instance.height as f32,
         ));
+        let instance_size = Vec2::new(instance.width as f32, instance.height as f32);
+        let center_delta = (effective_display_size - instance_size) * 0.5;
 
         let entity_x = if spec.ldtk_center_x_from_top_left {
-            transform.translation.x + (effective_display_size.x * 0.5)
+            // Entity transforms are already centered on the LDtk instance bounds.
+            // For top-left anchored visuals, shift only by the size difference.
+            transform.translation.x + center_delta.x
         } else {
             transform.translation.x
         };
         let entity_y = if spec.ldtk_center_y_from_top_left {
-            transform.translation.y - (effective_display_size.y * 0.5)
+            // Y is flipped relative to LDtk pixel coordinates.
+            transform.translation.y - center_delta.y
         } else {
             transform.translation.y
         };
@@ -492,6 +567,7 @@ pub fn materialize_ldtk_entity_sprites(
                 ..default()
             },
             Transform::from_xyz(entity_x, entity_y, spec.z),
+            LockGlobalZ(spec.z),
         ));
         if spec.with_collision {
             entity_cmd.insert(BoundingBox {
@@ -510,6 +586,39 @@ pub fn materialize_ldtk_entity_sprites(
             "Bear" | "Teller" | "Bank_teller"
         ) {
             entity_cmd.insert(TellerSprite);
+        }
+    }
+}
+
+pub fn enforce_locked_global_z(
+    mut query: Query<(&mut Transform, &LockGlobalZ, Option<&ChildOf>)>,
+    parent_globals: Query<&GlobalTransform>,
+) {
+    for (mut tf, lock, parent) in &mut query {
+        let parent_global_z = parent
+            .and_then(|p| parent_globals.get(p.parent()).ok())
+            .map(|g| g.translation().z)
+            .unwrap_or(0.0);
+        let target_local_z = lock.0 - parent_global_z;
+        if (tf.translation.z - target_local_z).abs() > 0.001 {
+            tf.translation.z = target_local_z;
+        }
+    }
+}
+
+pub fn apply_tile_layer_visual_specs(
+    mut commands: Commands,
+    layers: Query<(Entity, &Name), Without<LockGlobalZ>>,
+) {
+    for (entity, name) in &layers {
+        if let Some(spec) = tile_visual_spec(name.as_str()) {
+            commands.entity(entity).insert(LockGlobalZ(spec.z));
+            println!(
+                "[TileVisualSpec] Applied LockGlobalZ {} to layer `{}` ({:?})",
+                spec.z,
+                name.as_str(),
+                entity
+            );
         }
     }
 }

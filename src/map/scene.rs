@@ -17,22 +17,62 @@ use crate::PlayerMoney;
 
 use super::ldtk::{
     despawn_ldtk_world, load_or_spawn_ldtk_world, loaded_map_path, map_asset_to_disk_path,
-    scene_to_asset_path, set_loaded_map, LoadedMap, TransferPortal, TOWN_MAP_ASSET_PATH,
+    scene_tag_from_map_asset_path, scene_to_asset_path, set_loaded_map, LoadedMap,
+    PendingPlayerStartScene, TransferPortal, TOWN_MAP_ASSET_PATH,
 };
 
 const PLAYER_HITBOX_SIZE: f32 = 16.0;
 const SCENE_TRANSFER_COOLDOWN_SECS: f32 = 0.35;
-const GENERATED_MAZE_SIZE: f32 = 21.0;
+const GENERATED_MAZE_SIZE: f32 = 31.0;
 const MAZE_SCENE_KEY: &str = "maze";
 const SOUP_STORE_SCENE_KEY: &str = "soup_store";
 const EXIT_SCENE_KEY: &str = "exit";
+const JAIL_MAP_ASSET_PATH: &str = "maps/jail.ldtk";
 const SCENE_FADE_OUT_SECS: f32 = 0.5;
 const SCENE_FADE_IN_SECS: f32 = 0.5;
 const SCENE_BLACK_HOLD_SECS: f32 = 0.6;
 const SCENE_FADE_OVERLAY_SIZE: f32 = 10000.0;
+const SOUP_STORE_MAP_ASSET_PATH: &str = "maps/soup_store.ldtk";
+
+#[derive(Clone, Copy)]
+pub struct SceneBackgroundSpec {
+    pub color: Color,
+}
+
+fn scene_background_spec(scene: &str) -> SceneBackgroundSpec {
+    match scene {
+        // Maze: dark.
+        MAZE_SCENE_KEY => SceneBackgroundSpec {
+            color: Color::srgb(0., 0., 0.),
+        },
+        // Town: green
+        TOWN_MAP_ASSET_PATH => SceneBackgroundSpec {
+            color: Color::srgb(0.6, 0.722, 0.518),
+        },
+        // Soup store: slightly warm.
+        SOUP_STORE_MAP_ASSET_PATH => SceneBackgroundSpec {
+            color: Color::srgb(0.88, 0.86, 0.82),
+        },
+        // Jail: colder + flatter.
+        JAIL_MAP_ASSET_PATH => SceneBackgroundSpec {
+            color: Color::srgb(0.725, 0.769, 0.686),
+        },
+        // Fallback.
+        _ => SceneBackgroundSpec {
+            color: Color::srgb(0.6, 0.722, 0.518),
+        },
+    }
+}
 
 #[derive(Component)]
 pub struct SceneFadeOverlay;
+#[derive(Component)]
+pub struct SceneBackground;
+
+#[derive(Message, Clone)]
+pub struct SceneChangeRequest {
+    pub asset_path: String,
+}
 
 #[derive(Clone)]
 enum SceneTransitionTarget {
@@ -82,9 +122,15 @@ impl Default for SceneTransferCooldown {
 
 #[derive(Resource, Default)]
 pub struct HeistRunStats {
-    active: bool,
-    start_elapsed_secs: f32,
-    stopped_at_shaft: bool,
+    pub active: bool,
+    pub start_elapsed_secs: f32,
+    pub stopped_at_shaft: bool,
+}
+
+#[derive(Resource, Default)]
+pub struct HeistLifetimeStats {
+    pub successful_robberies: u32,
+    pub failed_robberies: u32,
 }
 
 fn heist_elapsed_secs(stats: &HeistRunStats, now: f32) -> f32 {
@@ -139,6 +185,7 @@ pub fn trigger_scene_transfer(
     loaded_map: Res<LoadedMap>,
     mut transition: ResMut<SceneTransitionState>,
     mut heist_stats: ResMut<HeistRunStats>,
+    mut pending_player_start: ResMut<PendingPlayerStartScene>,
     mut app_exit: MessageWriter<AppExit>,
     player_query: Query<&Transform, With<Player>>,
     transfer_query: Query<(&GlobalTransform, &TransferPortal)>,
@@ -200,6 +247,8 @@ pub fn trigger_scene_transfer(
                 asset_path: next_scene_asset_path,
             },
         ) {
+            pending_player_start.from_scene =
+                Some(scene_tag_from_map_asset_path(loaded_map_path(&loaded_map)));
             if loaded_map_path(&loaded_map) == MAZE_SCENE_KEY
                 && transfer
                     .scene
@@ -214,6 +263,33 @@ pub fn trigger_scene_transfer(
     }
 }
 
+pub fn handle_scene_change_request(
+    loaded_map: Res<LoadedMap>,
+    mut transition: ResMut<SceneTransitionState>,
+    mut pending_player_start: ResMut<PendingPlayerStartScene>,
+    mut requests: MessageReader<SceneChangeRequest>,
+) {
+    if transition.phase != SceneTransitionPhase::Idle {
+        return;
+    }
+
+    for req in requests.read() {
+        if req.asset_path == loaded_map_path(&loaded_map) {
+            continue;
+        }
+        if request_scene_transition(
+            &mut transition,
+            SceneTransitionTarget::OtherMap {
+                asset_path: req.asset_path.clone(),
+            },
+        ) {
+            pending_player_start.from_scene =
+                Some(scene_tag_from_map_asset_path(loaded_map_path(&loaded_map)));
+            break;
+        }
+    }
+}
+
 pub fn handle_guard_capture(
     alert: ResMut<GuardAlertState>,
     loaded_map: Res<LoadedMap>,
@@ -221,6 +297,8 @@ pub fn handle_guard_capture(
     mut cooldown: ResMut<SceneTransferCooldown>,
     mut transition: ResMut<SceneTransitionState>,
     mut heist_stats: ResMut<HeistRunStats>,
+    mut lifetime_stats: ResMut<HeistLifetimeStats>,
+    mut pending_player_start: ResMut<PendingPlayerStartScene>,
     mut player_money: ResMut<PlayerMoney>,
     mut heist_report_writer: MessageWriter<HeistReportMessage>,
 ) {
@@ -233,15 +311,18 @@ pub fn handle_guard_capture(
     if request_scene_transition(
         &mut transition,
         SceneTransitionTarget::OtherMap {
-            asset_path: TOWN_MAP_ASSET_PATH.to_string(),
+            asset_path: JAIL_MAP_ASSET_PATH.to_string(),
         },
     ) {
+        pending_player_start.from_scene =
+            Some(scene_tag_from_map_asset_path(loaded_map_path(&loaded_map)));
         let elapsed = heist_elapsed_secs(&heist_stats, time.elapsed_secs());
         let money_before_reset = player_money.amount;
         heist_report_writer.write(HeistReportMessage {
             successful: false,
             money: 0,
             profit: -money_before_reset,
+            successful_robberies: lifetime_stats.successful_robberies,
             stopped_at_shaft: heist_stats.stopped_at_shaft,
             time_till_death_secs: Some(elapsed),
             heist_duration_secs: elapsed,
@@ -249,6 +330,7 @@ pub fn handle_guard_capture(
         heist_stats.active = false;
         heist_stats.stopped_at_shaft = false;
         heist_stats.start_elapsed_secs = 0.0;
+        lifetime_stats.failed_robberies = lifetime_stats.failed_robberies.saturating_add(1);
         cooldown.timer = Timer::from_seconds(SCENE_TRANSFER_COOLDOWN_SECS, TimerMode::Once);
         player_money.amount = 0;
     }
@@ -260,6 +342,8 @@ pub fn handle_maze_exit(
     mut cooldown: ResMut<SceneTransferCooldown>,
     mut transition: ResMut<SceneTransitionState>,
     mut heist_stats: ResMut<HeistRunStats>,
+    mut lifetime_stats: ResMut<HeistLifetimeStats>,
+    mut pending_player_start: ResMut<PendingPlayerStartScene>,
     maze_state: Option<Res<MazeRenderState>>,
     player_query: Query<&Transform, With<Player>>,
     player_money: Res<PlayerMoney>,
@@ -294,11 +378,14 @@ pub fn handle_maze_exit(
             asset_path: TOWN_MAP_ASSET_PATH.to_string(),
         },
     ) {
+        pending_player_start.from_scene =
+            Some(scene_tag_from_map_asset_path(loaded_map_path(&loaded_map)));
         let elapsed = heist_elapsed_secs(&heist_stats, time.elapsed_secs());
         heist_report_writer.write(HeistReportMessage {
             successful: true,
             money: player_money.amount,
             profit: player_money.amount,
+            successful_robberies: lifetime_stats.successful_robberies.saturating_add(1),
             stopped_at_shaft: heist_stats.stopped_at_shaft,
             time_till_death_secs: None,
             heist_duration_secs: elapsed,
@@ -306,6 +393,8 @@ pub fn handle_maze_exit(
         heist_stats.active = false;
         heist_stats.stopped_at_shaft = false;
         heist_stats.start_elapsed_secs = 0.0;
+        lifetime_stats.successful_robberies =
+            lifetime_stats.successful_robberies.saturating_add(1);
         cooldown.timer = Timer::from_seconds(SCENE_TRANSFER_COOLDOWN_SECS, TimerMode::Once);
     }
 }
@@ -435,4 +524,39 @@ pub fn sync_scene_fade_overlay(
         }
     };
     sprite.color = Color::srgba(0.0, 0.0, 0.0, alpha);
+}
+
+pub fn setup_bg(mut commands: Commands) {
+    commands.spawn((
+        SceneBackground,
+        Sprite::from_color(
+            scene_background_spec(TOWN_MAP_ASSET_PATH).color,
+            Vec2::splat(4096.0),
+        ),
+        Transform::from_xyz(0.0, 0.0, -10.0),
+    ));
+}
+
+pub fn sync_bg_with_camera(
+    camera_query: Query<&Transform, (With<Camera2d>, Without<SceneBackground>)>,
+    mut bg_query: Query<&mut Transform, With<SceneBackground>>,
+) {
+    let Ok(camera_tf) = camera_query.single() else {
+        return;
+    };
+    let Ok(mut bg_tf) = bg_query.single_mut() else {
+        return;
+    };
+    bg_tf.translation.x = camera_tf.translation.x;
+    bg_tf.translation.y = camera_tf.translation.y;
+}
+
+pub fn apply_scene_background_spec(
+    loaded_map: Res<LoadedMap>,
+    mut bg_query: Query<&mut Sprite, With<SceneBackground>>,
+) {
+    let Ok(mut bg_sprite) = bg_query.single_mut() else {
+        return;
+    };
+    bg_sprite.color = scene_background_spec(loaded_map_path(&loaded_map)).color;
 }

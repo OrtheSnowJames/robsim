@@ -1,25 +1,43 @@
 // generates the vault
 use super::{get_grid_at, set_grid_at, Grid, GridType};
-use crate::rand_vec2;
-use bevy::{math::ops::floor, prelude::*};
+use bevy::prelude::*;
 use rand::RngExt;
 use rand::seq::SliceRandom;
 
-const COIN_CHANCE: f64 = 1.0/10.0;
+const COIN_CHANCE: f64 = 0.08;
+const BRAID_DEAD_END_CHANCE: f32 = 0.75;
+const ENTRANCE_ROOM_RADIUS: i32 = 2;
+const EXIT_ROOM_RADIUS: i32 = 2;
+const MIN_SHAFT_DISTANCE_FROM_KEY_TILES: i32 = 5;
 
 pub fn generate(max_size: f32) -> Grid {
-    let rng = rand::rng();
-    
-    // make entrance & exit
-    let entrance_pos = Vec2::new(floor(max_size / 2.0), floor(max_size / 2.0));
-    let exit_pos = rand_vec2(rng, 0.0..max_size);
+    let height = sanitize_maze_size(max_size);
+    let width = sanitize_maze_size(max_size * 1.5);
+    let center_x = (width / 2) as f32;
+
+    // Stable orientation is easier for first-time players:
+    // entrance near the bottom-center, exit near the top-center.
+    let entrance_pos = Vec2::new(center_x, (height.saturating_sub(2)) as f32);
+    let exit_pos = Vec2::new(center_x, 1.0);
 
     generate_maze(
-        max_size as usize, 
-        max_size as usize,
+        width,
+        height,
         entrance_pos,
-        exit_pos
+        exit_pos,
     )
+}
+
+fn sanitize_maze_size(input: f32) -> usize {
+    let mut size = input.round() as i32;
+    if size < 9 {
+        size = 9;
+    }
+    // DFS step-2 carving is most stable on odd dimensions.
+    if size % 2 == 0 {
+        size += 1;
+    }
+    size as usize
 }
 
 pub fn find_tile(grid: &Grid, tile: u8) -> Option<IVec2> {
@@ -89,11 +107,22 @@ fn generate_maze(width: usize, height: usize, entrance: Vec2, exit: Vec2) -> Gri
         .or_else(|| farthest_floor_cell_from(&grid, entrance_cell))
         .unwrap_or(IVec2::new((width as i32 - 2).max(1), (height as i32 - 2).max(1)));
 
+    let min_exit_distance_sq = ((width.min(height) as i32) / 3).pow(2);
+    if squared_distance(entrance_cell, exit_cell) < min_exit_distance_sq {
+        if let Some(farthest) = farthest_floor_cell_from(&grid, entrance_cell) {
+            exit_cell = farthest;
+        }
+    }
+
     if exit_cell == entrance_cell {
         if let Some(farthest) = farthest_floor_cell_from(&grid, entrance_cell) {
             exit_cell = farthest;
         }
     }
+
+    carve_room(&mut grid, entrance_cell, ENTRANCE_ROOM_RADIUS);
+    carve_room(&mut grid, exit_cell, EXIT_ROOM_RADIUS);
+    braid_dead_ends(&mut grid, BRAID_DEAD_END_CHANCE);
 
     set_grid_at(
         &mut grid,
@@ -107,9 +136,82 @@ fn generate_maze(width: usize, height: usize, entrance: Vec2, exit: Vec2) -> Gri
     );
     place_hide_spots(&mut grid);
     place_coins(&mut grid);
-    place_shaft(&mut grid);
+    place_shaft(&mut grid, entrance_cell, exit_cell);
 
     grid
+}
+
+fn squared_distance(a: IVec2, b: IVec2) -> i32 {
+    let dx = a.x - b.x;
+    let dy = a.y - b.y;
+    dx * dx + dy * dy
+}
+
+fn manhattan_distance(a: IVec2, b: IVec2) -> i32 {
+    (a.x - b.x).abs() + (a.y - b.y).abs()
+}
+
+fn carve_room(grid: &mut Grid, center: IVec2, radius: i32) {
+    for y in (center.y - radius)..=(center.y + radius) {
+        for x in (center.x - radius)..=(center.x + radius) {
+            if is_interior(grid, x, y) {
+                set_grid_at(grid, Vec2::new(x as f32, y as f32), GridType::FLOOR as u8);
+            }
+        }
+    }
+}
+
+fn braid_dead_ends(grid: &mut Grid, chance: f32) {
+    if grid.is_empty() || grid[0].is_empty() {
+        return;
+    }
+
+    let mut dead_ends = Vec::new();
+    for y in 1..(grid.len() as i32 - 1) {
+        for x in 1..(grid[0].len() as i32 - 1) {
+            if is_dead_end(grid, x as isize, y as isize) {
+                dead_ends.push((x, y));
+            }
+        }
+    }
+
+    let mut rng = rand::rng();
+    dead_ends.shuffle(&mut rng);
+
+    for (x, y) in dead_ends {
+        if !is_dead_end(grid, x as isize, y as isize) {
+            continue;
+        }
+        if rng.random::<f32>() > chance {
+            continue;
+        }
+
+        let mut dirs = vec![(1_i32, 0_i32), (-1, 0), (0, 1), (0, -1)];
+        dirs.shuffle(&mut rng);
+
+        for (dx, dy) in dirs {
+            let wall = IVec2::new(x + dx, y + dy);
+            let beyond = IVec2::new(x + (dx * 2), y + (dy * 2));
+
+            if !is_interior(grid, wall.x, wall.y) || !is_interior(grid, beyond.x, beyond.y) {
+                continue;
+            }
+            if get_grid_at(grid, wall.x as isize, wall.y as isize) != Some(GridType::WALL as u8) {
+                continue;
+            }
+
+            let beyond_tile =
+                get_grid_at(grid, beyond.x as isize, beyond.y as isize).unwrap_or(GridType::WALL as u8);
+            if is_walkable(beyond_tile) {
+                set_grid_at(
+                    grid,
+                    Vec2::new(wall.x as f32, wall.y as f32),
+                    GridType::FLOOR as u8,
+                );
+                break;
+            }
+        }
+    }
 }
 
 fn first_floor_cell(grid: &Grid) -> Option<IVec2> {
@@ -218,7 +320,7 @@ fn place_hide_spots(grid: &mut Grid) {
     }
 }
 
-fn place_shaft(grid: &mut Grid) {
+fn place_shaft(grid: &mut Grid, entrance_cell: IVec2, exit_cell: IVec2) {
     if grid.is_empty() || grid[0].is_empty() {
         return;
     }
@@ -239,10 +341,26 @@ fn place_shaft(grid: &mut Grid) {
         }
     }
 
-    let candidates = if dead_end_cells.is_empty() {
+    let raw_candidates = if dead_end_cells.is_empty() {
         &floor_cells
     } else {
         &dead_end_cells
+    };
+
+    let filtered: Vec<(isize, isize)> = raw_candidates
+        .iter()
+        .copied()
+        .filter(|(x, y)| {
+            let cell = IVec2::new(*x as i32, *y as i32);
+            manhattan_distance(cell, entrance_cell) >= MIN_SHAFT_DISTANCE_FROM_KEY_TILES
+                && manhattan_distance(cell, exit_cell) >= MIN_SHAFT_DISTANCE_FROM_KEY_TILES
+        })
+        .collect();
+
+    let candidates = if filtered.is_empty() {
+        raw_candidates.to_vec()
+    } else {
+        filtered
     };
 
     if candidates.is_empty() {

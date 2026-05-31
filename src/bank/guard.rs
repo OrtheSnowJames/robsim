@@ -1,13 +1,14 @@
 use bevy::prelude::*;
+use bevy::ui::widget::NodeImageMode;
 use rand::RngExt;
 use serde_json::Value;
-use std::fs;
-use std::path::Path;
 
 use crate::bank::render::maze::{grid_cell_world_position, world_to_grid_cell, MazeRenderState, TILE_SIZE};
 use crate::bank::{Grid, GridType};
 use crate::entity_dialogue::PlayerMovementLock;
+use crate::map::{HeistLifetimeStats, HeistRunStats};
 use crate::player::Player;
+use crate::receipts::{Receipt, ReceiptCache};
 use crate::sprite_sheet::{
     apply_animator_to_sprite, tick_animator, Facing, FacingColumns, SpriteSheetAnimator,
     SpriteSheetConfig,
@@ -15,24 +16,42 @@ use crate::sprite_sheet::{
 
 const GUARD_SPEED: f32 = 50.0;
 const GUARD_REPATH_SECS: f32 = 0.35;
-const GUARD_TOUCH_DISTANCE: f32 = 10.0;
-const GUARD_SIGHT_RADIUS_TILES: f32 = 7.0;
+const GUARD_TOUCH_DISTANCE: f32 = 16.0;
+const GUARD_SIGHT_RADIUS_TILES: f32 = 6.5;
 const CHASE_SPEED_MULTIPLIER: f32 = 1.5;
 const PATROL_RETARGET_DISTANCE: f32 = 4.0;
 const PATH_DEBUG_Z: f32 = 13.0;
 const SHOW_GUARD_PATH_DEBUG: bool = false;
-// Toggle for testing: set false to disable all guard spawning/behavior.
-const ENABLE_GUARDS: bool = false;
+const ENABLE_GUARDS: bool = true;
+const SHARED_GUARD_LOCK_ON: bool = true;
 const GUARD_SPRITE_PATH: &str = "guard.png";
 const EXCLAMATION_PATH: &str = "exclamation.png";
 const GUARD_CAPTURE_EXCLAIM_SECS: f32 = 0.35;
 const GUARD_CAPTURE_DIALOGUE: &str = "Hey!\nCaught you.\nPress ENTER.";
+
+#[derive(Clone, Copy)]
+struct GuardExclusionZoneConfig {
+    tile: u8,
+    radius: i32,
+}
+
+const GUARD_EXCLUSION_ZONES: &[GuardExclusionZoneConfig] = &[GuardExclusionZoneConfig {
+    tile: GridType::ENTRANCE as u8,
+    radius: 2,
+}];
+
+fn overlaps_aabb_centers(a_center: Vec2, a_size: Vec2, b_center: Vec2, b_size: Vec2) -> bool {
+    let half = (a_size + b_size) * 0.5;
+    let d = (a_center - b_center).abs();
+    d.x <= half.x && d.y <= half.y
+}
 
 pub struct GuardPlugin;
 
 impl Plugin for GuardPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<GuardAlertState>()
+            .init_resource::<SharedGuardLockState>()
             .init_resource::<GuardCaptureSequence>()
             .add_systems(Startup, setup_guard_capture_ui)
             .add_systems(Update, run_guard_capture_sequence);
@@ -45,6 +64,12 @@ pub struct MazeGuard;
 #[derive(Resource, Default)]
 pub struct GuardAlertState {
     pub caught_player: bool,
+}
+
+#[derive(Resource, Default)]
+pub struct SharedGuardLockState {
+    active: bool,
+    last_known_player_cell: Option<IVec2>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -114,6 +139,44 @@ fn is_walkable(tile: u8) -> bool {
         || tile == GridType::COIN as u8
 }
 
+fn find_tile_cell(grid: &Grid, tile_kind: u8) -> Option<IVec2> {
+    for (y, row) in grid.iter().enumerate() {
+        for (x, &tile) in row.iter().enumerate() {
+            if tile == tile_kind {
+                return Some(IVec2::new(x as i32, y as i32));
+            }
+        }
+    }
+    None
+}
+
+fn exclusion_zone_centers(grid: &Grid) -> Vec<(IVec2, i32)> {
+    let mut zones = Vec::new();
+    for zone in GUARD_EXCLUSION_ZONES {
+        if let Some(center) = find_tile_cell(grid, zone.tile) {
+            zones.push((center, zone.radius));
+        }
+    }
+    zones
+}
+
+fn is_in_any_exclusion_zone(cell: IVec2, zone_centers: &[(IVec2, i32)]) -> bool {
+    for (center, radius) in zone_centers {
+        if (cell.x - center.x).abs() <= *radius && (cell.y - center.y).abs() <= *radius {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_guard_walkable_at(grid: &Grid, cell: IVec2, zone_centers: &[(IVec2, i32)]) -> bool {
+    if !grid_in_bounds(grid, cell) {
+        return false;
+    }
+    let tile = grid[cell.y as usize][cell.x as usize];
+    is_walkable(tile) && !is_in_any_exclusion_zone(cell, zone_centers)
+}
+
 fn grid_in_bounds(grid: &Grid, cell: IVec2) -> bool {
     if cell.x < 0 || cell.y < 0 {
         return false;
@@ -125,6 +188,7 @@ fn grid_in_bounds(grid: &Grid, cell: IVec2) -> bool {
 }
 
 fn nearest_walkable_from_corner(grid: &Grid, corner: usize) -> IVec2 {
+    let zone_centers = exclusion_zone_centers(grid);
     let h = grid.len() as i32;
     let w = grid[0].len() as i32;
 
@@ -140,11 +204,7 @@ fn nearest_walkable_from_corner(grid: &Grid, corner: usize) -> IVec2 {
         for y in (sy - r)..=(sy + r) {
             for x in (sx - r)..=(sx + r) {
                 let cell = IVec2::new(x, y);
-                if !grid_in_bounds(grid, cell) {
-                    continue;
-                }
-                let tile = grid[y as usize][x as usize];
-                if is_walkable(tile) {
+                if is_guard_walkable_at(grid, cell, &zone_centers) {
                     return cell;
                 }
             }
@@ -155,6 +215,7 @@ fn nearest_walkable_from_corner(grid: &Grid, corner: usize) -> IVec2 {
 }
 
 fn corner_candidates(grid: &Grid, corner: usize) -> Vec<IVec2> {
+    let zone_centers = exclusion_zone_centers(grid);
     let h = grid.len() as i32;
     let w = grid[0].len() as i32;
     let mid_x = w / 2;
@@ -170,8 +231,8 @@ fn corner_candidates(grid: &Grid, corner: usize) -> Vec<IVec2> {
     let mut cells = Vec::new();
     for y in min_y..max_y {
         for x in min_x..max_x {
-            let tile = grid[y as usize][x as usize];
-            if is_walkable(tile) {
+            let cell = IVec2::new(x, y);
+            if is_guard_walkable_at(grid, cell, &zone_centers) {
                 cells.push(IVec2::new(x, y));
             }
         }
@@ -179,31 +240,39 @@ fn corner_candidates(grid: &Grid, corner: usize) -> Vec<IVec2> {
     cells
 }
 
-fn pick_patrol_target(grid: &Grid, corner: usize, current: IVec2) -> IVec2 {
+fn pick_patrol_target(grid: &Grid, corner: usize, current: IVec2, previous_target: IVec2) -> IVec2 {
     let candidates = corner_candidates(grid, corner);
     if candidates.is_empty() {
         return current;
     }
 
-    let mut best = candidates[0];
-    let mut best_dist = 0.0_f32;
-    for &c in &candidates {
-        let d = (c - current).as_vec2().length();
-        if d > best_dist {
-            best = c;
-            best_dist = d;
-        }
+    let mut ranked: Vec<(IVec2, f32)> = candidates
+        .into_iter()
+        .filter(|&c| c != previous_target)
+        .map(|c| (c, (c - current).as_vec2().length()))
+        .collect();
+
+    if ranked.is_empty() {
+        return nearest_walkable_from_corner(grid, corner);
     }
 
+    ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let best_dist = ranked[0].1;
+
     if best_dist < PATROL_RETARGET_DISTANCE {
-        nearest_walkable_from_corner(grid, corner)
-    } else {
-        best
+        return nearest_walkable_from_corner(grid, corner);
     }
+
+    // Pick among the farthest few cells to avoid deterministic patrol loops.
+    let top_n = ranked.len().min(8);
+    let mut rng = rand::rng();
+    let idx = rng.random_range(0..top_n);
+    ranked[idx].0
 }
 
 fn flood_fill_distances(grid: &Grid, goal: IVec2) -> Option<Vec<Vec<i32>>> {
-    if !grid_in_bounds(grid, goal) {
+    let zone_centers = exclusion_zone_centers(grid);
+    if !is_guard_walkable_at(grid, goal, &zone_centers) {
         return None;
     }
     use std::collections::VecDeque;
@@ -227,7 +296,7 @@ fn flood_fill_distances(grid: &Grid, goal: IVec2) -> Option<Vec<Vec<i32>>> {
 
             let nx = next.x as usize;
             let ny = next.y as usize;
-            if !is_walkable(grid[ny][nx]) || distance[ny][nx] != i32::MAX {
+            if !is_guard_walkable_at(grid, next, &zone_centers) || distance[ny][nx] != i32::MAX {
                 continue;
             }
 
@@ -427,9 +496,14 @@ pub fn update_guards(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     time: Res<Time>,
+    heist_stats: Option<Res<HeistRunStats>>,
+    heist_lifetime: Option<Res<HeistLifetimeStats>>,
+    player_money: Option<Res<crate::PlayerMoney>>,
     maze_state: Option<Res<MazeRenderState>>,
     mut alert: ResMut<GuardAlertState>,
     mut capture: ResMut<GuardCaptureSequence>,
+    mut shared_lock_state: ResMut<SharedGuardLockState>,
+    mut receipt_cache: Option<ResMut<ReceiptCache>>,
     mut movement_lock: Option<ResMut<PlayerMovementLock>>,
     mut player_query: Query<&mut Transform, With<Player>>,
     mut guards: Query<
@@ -511,12 +585,50 @@ pub fn update_guards(
     };
 
     let player_hidden = if grid_in_bounds(&maze_state.grid, player_cell) {
-        maze_state.grid[player_cell.y as usize][player_cell.x as usize] == GridType::HIDE as u8
+        let tile = maze_state.grid[player_cell.y as usize][player_cell.x as usize];
+        tile == GridType::HIDE as u8 || tile == GridType::SHAFT as u8
     } else {
         false
     };
 
     let mut best_path: Option<(f32, bool, Vec<IVec2>)> = None;
+    let mut any_guard_has_lock = false;
+    let mut shared_chase_target = player_cell;
+
+    if SHARED_GUARD_LOCK_ON && !player_hidden {
+        for (_, guard_tf, _, _, _, _) in &mut guards {
+            let Some(guard_cell) = world_to_grid_cell(
+                maze_state.grid[0].len(),
+                maze_state.grid.len(),
+                maze_state.world_center,
+                guard_tf.translation.truncate(),
+            ) else {
+                continue;
+            };
+
+            let path_to_player = grid_flood_fill(&maze_state.grid, player_cell, guard_cell);
+            let distance_cells = path_to_player.len() as f32;
+            let player_in_radius = !player_hidden && distance_cells <= GUARD_SIGHT_RADIUS_TILES;
+            if player_in_radius {
+                any_guard_has_lock = true;
+                break;
+            }
+        }
+
+        if any_guard_has_lock {
+            shared_lock_state.active = true;
+            shared_lock_state.last_known_player_cell = Some(player_cell);
+        } else {
+            shared_lock_state.active = false;
+            shared_lock_state.last_known_player_cell = None;
+        }
+    }
+
+    if SHARED_GUARD_LOCK_ON && player_hidden {
+        shared_lock_state.active = false;
+        shared_lock_state.last_known_player_cell = None;
+        shared_chase_target = player_cell;
+    }
 
     for (guard_entity, mut guard_tf, mut brain, mut sprite, mut animator, sheet_cfg) in &mut guards {
         if let Some(cell) = world_to_grid_cell(
@@ -533,7 +645,16 @@ pub fn update_guards(
         let player_in_radius = !player_hidden && distance_cells <= GUARD_SIGHT_RADIUS_TILES;
         let can_see_player = player_in_radius;
 
-        brain.mode = if player_in_radius {
+        let should_chase = if SHARED_GUARD_LOCK_ON {
+            if player_hidden {
+                shared_lock_state.active && shared_lock_state.last_known_player_cell.is_some()
+            } else {
+                any_guard_has_lock
+            }
+        } else {
+            player_in_radius
+        };
+        brain.mode = if should_chase {
             GuardMode::Chase
         } else {
             GuardMode::Patrol
@@ -548,17 +669,34 @@ pub fn update_guards(
         brain.repath_timer.tick(time.delta());
         if brain.mode == GuardMode::Chase {
             // While chasing, always lock movement target to the live player cell.
-            brain.target_cell = player_cell;
+            brain.target_cell = if SHARED_GUARD_LOCK_ON {
+                shared_chase_target
+            } else {
+                player_cell
+            };
         } else if brain.repath_timer.just_finished() {
             brain.target_cell = if brain.mode == GuardMode::Chase {
-                player_cell
+                if SHARED_GUARD_LOCK_ON {
+                    shared_chase_target
+                } else {
+                    player_cell
+                }
             } else {
-                pick_patrol_target(&maze_state.grid, brain.corner, brain.current_cell)
+                pick_patrol_target(
+                    &maze_state.grid,
+                    brain.corner,
+                    brain.current_cell,
+                    brain.target_cell,
+                )
             };
         }
 
         let path_goal = if brain.mode == GuardMode::Chase {
-            player_cell
+            if SHARED_GUARD_LOCK_ON {
+                shared_chase_target
+            } else {
+                player_cell
+            }
         } else {
             brain.target_cell
         };
@@ -638,8 +776,10 @@ pub fn update_guards(
         );
         apply_animator_to_sprite(&mut sprite, &sheet_cfg.0, &animator);
 
-        let dist_to_player = (guard_tf.translation.truncate() - player_world).length();
-        if dist_to_player <= GUARD_TOUCH_DISTANCE {
+        let guard_center = guard_tf.translation.truncate();
+        let guard_size = Vec2::splat(GUARD_TOUCH_DISTANCE.max(1.0));
+        let player_size = Vec2::splat(GUARD_TOUCH_DISTANCE.max(1.0));
+        if !player_hidden && overlaps_aabb_centers(guard_center, guard_size, player_world, player_size) {
             // Keep player transform valid for callers that might inspect it in this frame.
             player_transform.translation.z = player_transform.translation.z.max(11.0);
             let exclamation = commands
@@ -657,7 +797,36 @@ pub fn update_guards(
             capture.phase = GuardCapturePhase::Exclaim;
             capture.timer = Timer::from_seconds(GUARD_CAPTURE_EXCLAIM_SECS, TimerMode::Once);
             capture.exclamation_entity = Some(exclamation);
-            capture.dialogue_line = random_capture_line(asset_server.as_ref());
+            let money = player_money.as_ref().map(|m| m.amount).unwrap_or(0);
+            let successful_robberies = heist_lifetime
+                .as_ref()
+                .map(|s| s.successful_robberies)
+                .unwrap_or(0);
+            let failed_robberies = heist_lifetime
+                .as_ref()
+                .map(|s| s.failed_robberies)
+                .unwrap_or(0);
+            let (survival_secs, stopped_at_shaft) = if let Some(stats) = heist_stats.as_ref() {
+                let secs = if stats.active {
+                    (time.elapsed_secs() - stats.start_elapsed_secs).max(0.0)
+                } else {
+                    0.0
+                };
+                (secs, stats.stopped_at_shaft)
+            } else {
+                (0.0, false)
+            };
+            capture.dialogue_line = random_capture_line(
+                asset_server.as_ref(),
+                receipt_cache.as_deref_mut(),
+                CaptureLineContext {
+                    money,
+                    survival_secs,
+                    stopped_at_shaft,
+                    successful_robberies,
+                    failed_robberies,
+                },
+            );
             if let Some(lock) = movement_lock.as_deref_mut() {
                 lock.active = true;
             }
@@ -692,7 +861,7 @@ pub fn update_guards(
     }
 }
 
-fn setup_guard_capture_ui(mut commands: Commands) {
+fn setup_guard_capture_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn((
             GuardCaptureUiRoot,
@@ -703,11 +872,19 @@ fn setup_guard_capture_ui(mut commands: Commands) {
                 bottom: Val::Px(20.0),
                 min_height: Val::Px(96.0),
                 padding: UiRect::all(Val::Px(12.0)),
-                border: UiRect::all(Val::Px(3.0)),
+                border: UiRect::all(Val::Px(0.0)),
                 ..default()
             },
-            BackgroundColor(Color::BLACK),
-            BorderColor::all(Color::WHITE),
+            BackgroundColor(Color::NONE),
+            BorderColor::all(Color::NONE),
+            ImageNode::new(asset_server.load("bubble.png")).with_mode(NodeImageMode::Sliced(
+                TextureSlicer {
+                    border: BorderRect::all(6.0),
+                    center_scale_mode: SliceScaleMode::Stretch,
+                    sides_scale_mode: SliceScaleMode::Stretch,
+                    max_corner_scale: 1.0,
+                },
+            )),
             Visibility::Hidden,
             ZIndex(10000),
         ))
@@ -724,35 +901,129 @@ fn setup_guard_capture_ui(mut commands: Commands) {
         });
 }
 
-fn random_capture_line(asset_server: &AssetServer) -> String {
+#[derive(Clone, Copy)]
+struct CaptureLineContext {
+    money: i32,
+    survival_secs: f32,
+    stopped_at_shaft: bool,
+    successful_robberies: u32,
+    failed_robberies: u32,
+}
+
+fn random_capture_line(
+    asset_server: &AssetServer,
+    receipt_cache: Option<&mut ReceiptCache>,
+    ctx: CaptureLineContext,
+) -> String {
     let _ = asset_server;
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("assets")
-        .join("lines.jsonc");
-    let Ok(raw) = fs::read_to_string(path) else {
+    let receipt = Receipt {
+        successful: false,
+        money: ctx.money,
+        profit: 0,
+        successful_robberies: ctx.successful_robberies,
+        failed_robberies: ctx.failed_robberies,
+        stopped_at_shaft: ctx.stopped_at_shaft,
+        time_till_death_secs: Some(ctx.survival_secs),
+        heist_duration_secs: ctx.survival_secs,
+    };
+    let lines_object = if let Some(cache) = receipt_cache {
+        cache.get_or_build_lines_object(receipt)
+    } else {
+        receipt.lines_object()
+    };
+    let Some(json) = lines_object else {
         return GUARD_CAPTURE_DIALOGUE.to_string();
     };
-    let cleaned = raw
-        .lines()
-        .filter(|line| !line.trim_start().starts_with("//"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let Ok(json) = serde_json::from_str::<Value>(&cleaned) else {
-        return GUARD_CAPTURE_DIALOGUE.to_string();
-    };
-    let Some(caught) = json.get("caught").and_then(Value::as_array) else {
-        return GUARD_CAPTURE_DIALOGUE.to_string();
-    };
-    if caught.is_empty() {
+    let mut candidates: Vec<String> = Vec::new();
+
+    if let Some(conditional) = json.get("caught_conditions").and_then(Value::as_array) {
+        for condition in conditional {
+            let when = condition.get("when").unwrap_or(&Value::Null);
+            if !caught_condition_matches(when, ctx) {
+                continue;
+            }
+            if let Some(lines) = condition.get("lines").and_then(Value::as_array) {
+                for line in lines {
+                    if let Some(s) = line.as_str() {
+                        candidates.push(s.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if candidates.is_empty() {
+        if let Some(caught) = json.get("caught").and_then(Value::as_array) {
+            for line in caught {
+                if let Some(s) = line.as_str() {
+                    candidates.push(s.to_string());
+                }
+            }
+        }
+    }
+
+    if candidates.is_empty() {
         return GUARD_CAPTURE_DIALOGUE.to_string();
     }
 
     let mut rng = rand::rng();
-    let idx = rng.random_range(0..caught.len());
-    caught[idx]
-        .as_str()
-        .map(str::to_string)
-        .unwrap_or_else(|| GUARD_CAPTURE_DIALOGUE.to_string())
+    let idx = rng.random_range(0..candidates.len());
+    candidates[idx].clone()
+}
+
+fn caught_condition_matches(when: &Value, ctx: CaptureLineContext) -> bool {
+    if let Some(required) = when.get("stopped_at_shaft").and_then(Value::as_bool) {
+        if ctx.stopped_at_shaft != required {
+            return false;
+        }
+    }
+    if let Some(min) = when.get("money_min").and_then(Value::as_i64) {
+        if i64::from(ctx.money) < min {
+            return false;
+        }
+    }
+    if let Some(max) = when.get("money_max").and_then(Value::as_i64) {
+        if i64::from(ctx.money) > max {
+            return false;
+        }
+    }
+    if let Some(min) = when.get("survival_secs_min").and_then(Value::as_f64) {
+        if (ctx.survival_secs as f64) < min {
+            return false;
+        }
+    }
+    if let Some(max) = when.get("survival_secs_max").and_then(Value::as_f64) {
+        if (ctx.survival_secs as f64) > max {
+            return false;
+        }
+    }
+    if let Some(min) = when
+        .get("successful_robberies_min")
+        .and_then(Value::as_u64)
+    {
+        if u64::from(ctx.successful_robberies) < min {
+            return false;
+        }
+    }
+    if let Some(max) = when
+        .get("successful_robberies_max")
+        .and_then(Value::as_u64)
+    {
+        if u64::from(ctx.successful_robberies) > max {
+            return false;
+        }
+    }
+    if let Some(min) = when.get("failed_robberies_min").and_then(Value::as_u64) {
+        if u64::from(ctx.failed_robberies) < min {
+            return false;
+        }
+    }
+    if let Some(max) = when.get("failed_robberies_max").and_then(Value::as_u64) {
+        if u64::from(ctx.failed_robberies) > max {
+            return false;
+        }
+    }
+    true
 }
 
 fn run_guard_capture_sequence(

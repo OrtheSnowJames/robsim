@@ -1,14 +1,15 @@
 use bevy::prelude::*;
 
 const BUBBLE_Z: f32 = 40.0;
-const BUBBLE_SCALE: f32 = 0.75;
-const BUBBLE_BORDER_THICKNESS: f32 = 1.5 * BUBBLE_SCALE;
+const BUBBLE_SCALE: f32 = 0.8;
 const BUBBLE_MIN_WIDTH: f32 = 16.0 * BUBBLE_SCALE;
 const BUBBLE_MIN_HEIGHT: f32 = 12.0 * BUBBLE_SCALE;
 const BUBBLE_CHAR_WIDTH: f32 = 6.0 * BUBBLE_SCALE;
 const BUBBLE_TEXT_SIZE: f32 = 9.0 * BUBBLE_SCALE;
 const BUBBLE_MAX_CHARS_PER_LINE: usize = 28;
 const BUBBLE_LINE_HEIGHT: f32 = 10.0 * BUBBLE_SCALE;
+const BUBBLE_NINE_SLICE_INSET: f32 = 6.0;
+const BUBBLE_STACK_GAP: f32 = 3.0;
 
 pub struct TextBubblePlugin;
 
@@ -46,8 +47,7 @@ impl TextBubble {
 #[derive(Component)]
 struct TextBubbleNodes {
     root: Entity,
-    border: Entity,
-    fill: Entity,
+    bubble: Entity,
     label: Entity,
 }
 
@@ -90,39 +90,51 @@ fn wrap_text(message: &str, max_chars_per_line: usize) -> String {
     out
 }
 
+fn bubble_root_translation(owner: Entity, bubble: &TextBubble, size: Vec2) -> Vec3 {
+    let owner_idx = owner.to_bits();
+    let side_sign = if owner_idx % 2 == 0 { 1.0 } else { -1.0 };
+    let x = bubble.offset.x + size.x * 0.5 * side_sign;
+    let y = bubble.offset.y + size.y * 0.5;
+    Vec3::new(x, y, BUBBLE_Z)
+}
+
+fn bubble_on_left(owner: Entity) -> bool {
+    owner.to_bits() % 2 != 0
+}
+
 fn spawn_text_bubbles(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     query: Query<(Entity, &TextBubble), Without<TextBubbleNodes>>,
 ) {
     for (owner, bubble) in &query {
         let wrapped = wrap_text(&bubble.message, BUBBLE_MAX_CHARS_PER_LINE);
         let size = bubble_size(&wrapped);
+        let flip_x = bubble_on_left(owner);
 
+        let root_pos = bubble_root_translation(owner, bubble, size);
         let root = commands
             .spawn((
-                Transform::from_xyz(
-                    bubble.offset.x + size.x * 0.5,
-                    bubble.offset.y + size.y * 0.5,
-                    BUBBLE_Z,
-                ),
+                Transform::from_translation(root_pos),
                 Visibility::Inherited,
             ))
             .id();
 
-        let border = commands
+        let bubble_sprite = commands
             .spawn((
-                Sprite::from_color(
-                    Color::BLACK,
-                    size + Vec2::splat(BUBBLE_BORDER_THICKNESS * 2.0),
-                ),
+                Sprite {
+                    image: asset_server.load("bubble.png"),
+                    custom_size: Some(size),
+                    flip_x,
+                    image_mode: SpriteImageMode::Sliced(TextureSlicer {
+                        border: BorderRect::all(BUBBLE_NINE_SLICE_INSET),
+                        center_scale_mode: SliceScaleMode::Stretch,
+                        sides_scale_mode: SliceScaleMode::Stretch,
+                        max_corner_scale: 1.0,
+                    }),
+                    ..default()
+                },
                 Transform::from_xyz(0.0, 0.0, 0.0),
-            ))
-            .id();
-
-        let fill = commands
-            .spawn((
-                Sprite::from_color(Color::srgba(0.0, 0.0, 0.0, 0.92), size),
-                Transform::from_xyz(0.0, 0.0, 0.1),
             ))
             .id();
 
@@ -135,16 +147,15 @@ fn spawn_text_bubbles(
                 },
                 TextColor(Color::WHITE),
                 TextLayout::new_with_justify(Justify::Left),
-                Transform::from_xyz(0.0, -0.5, 0.2),
+                Transform::from_xyz(0.0, -0.5, 0.1),
             ))
             .id();
 
-        commands.entity(root).add_children(&[border, fill, label]);
+        commands.entity(root).add_children(&[bubble_sprite, label]);
         commands.entity(owner).add_child(root);
         commands.entity(owner).insert(TextBubbleNodes {
             root,
-            border,
-            fill,
+            bubble: bubble_sprite,
             label,
         });
     }
@@ -154,30 +165,68 @@ fn sync_text_bubbles(
     mut root_query: Query<(&mut Transform, &mut Visibility)>,
     mut sprite_query: Query<&mut Sprite>,
     mut text_query: Query<&mut Text2d>,
-    bubble_query: Query<(&TextBubble, &TextBubbleNodes)>,
+    owner_global_query: Query<&GlobalTransform>,
+    bubble_query: Query<(Entity, &TextBubble, &TextBubbleNodes)>,
 ) {
-    for (bubble, nodes) in &bubble_query {
+    let mut layout: Vec<(Entity, Entity, bool, Vec2, Vec2)> = Vec::new();
+    for (owner, bubble, nodes) in &bubble_query {
         let wrapped = wrap_text(&bubble.message, BUBBLE_MAX_CHARS_PER_LINE);
         let size = bubble_size(&wrapped);
-        let Ok((mut root_tf, mut root_vis)) = root_query.get_mut(nodes.root) else {
+        let owner_world = owner_global_query
+            .get(owner)
+            .map(|t| t.translation().truncate())
+            .unwrap_or(Vec2::ZERO);
+        let desired_local = bubble_root_translation(owner, bubble, size).truncate();
+        let desired_world = owner_world + desired_local;
+        layout.push((owner, nodes.root, bubble.visible, size, desired_world));
+
+        if let Ok(mut label_text) = text_query.get_mut(nodes.label) {
+            label_text.0 = wrapped;
+        }
+        if let Ok(mut bubble_sprite) = sprite_query.get_mut(nodes.bubble) {
+            bubble_sprite.custom_size = Some(size);
+            bubble_sprite.flip_x = bubble_on_left(owner);
+        }
+    }
+
+    layout.sort_by(|a, b| a.4.y.partial_cmp(&b.4.y).unwrap_or(std::cmp::Ordering::Equal));
+    let mut placed: Vec<(Vec2, Vec2)> = Vec::new();
+
+    for (owner, root, visible, size, mut world_pos) in layout {
+        let Ok((mut root_tf, mut root_vis)) = root_query.get_mut(root) else {
             continue;
         };
-        root_tf.translation.x = bubble.offset.x + size.x * 0.5;
-        root_tf.translation.y = bubble.offset.y + size.y * 0.5;
-        *root_vis = if bubble.visible {
+        *root_vis = if visible {
             Visibility::Visible
         } else {
             Visibility::Hidden
         };
-        if let Ok(mut border_sprite) = sprite_query.get_mut(nodes.border) {
-            border_sprite.custom_size = Some(size + Vec2::splat(BUBBLE_BORDER_THICKNESS * 2.0));
+        if !visible {
+            continue;
         }
-        if let Ok(mut fill_sprite) = sprite_query.get_mut(nodes.fill) {
-            fill_sprite.custom_size = Some(size);
+
+        loop {
+            let mut bumped = false;
+            for (other_pos, other_size) in &placed {
+                let half = (size + *other_size) * 0.5;
+                let d = (world_pos - *other_pos).abs();
+                if d.x < half.x && d.y < half.y {
+                    world_pos.y = other_pos.y + half.y + BUBBLE_STACK_GAP;
+                    bumped = true;
+                }
+            }
+            if !bumped {
+                break;
+            }
         }
-        if let Ok(mut label_text) = text_query.get_mut(nodes.label) {
-            label_text.0 = wrapped;
-        }
+
+        let owner_world = owner_global_query
+            .get(owner)
+            .map(|t| t.translation().truncate())
+            .unwrap_or(Vec2::ZERO);
+        let local = world_pos - owner_world;
+        root_tf.translation = Vec3::new(local.x, local.y, BUBBLE_Z);
+        placed.push((world_pos, size));
     }
 }
 
