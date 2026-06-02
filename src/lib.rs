@@ -25,3 +25,16 @@ pub fn rand_vec2(mut rng: ThreadRng, range: std::ops::Range<f32>) -> Vec2 {
     let y = rng.random_range(range.clone());
     Vec2::new(x, y)
 }
+
+#[macro_export]
+macro_rules! hex_color {
+    ($hex:expr) => {{
+        let hex = $hex;
+
+        Color::srgb(
+            ((hex >> 16) & 0xFF) as f32 / 255.0,
+            ((hex >> 8) & 0xFF) as f32 / 255.0,
+            (hex & 0xFF) as f32 / 255.0,
+        )
+    }};
+}

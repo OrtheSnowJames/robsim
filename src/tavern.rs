@@ -9,8 +9,10 @@ use crate::map::{loaded_map_path, LdtkEntityByNameQuery, LoadedMap};
 use crate::player::Player;
 use crate::receipts::{format_receipt_text, Receipt, ReceiptCache};
 use crate::text_bubble::TextBubble;
+use crate::hex_color;
 
 const TAVERN_MAP_PATH: &str = "maps/tavern.ldtk";
+const NEWSPAPER_OFFICE_MAP_PATH: &str = "maps/newspaper.ldtk";
 const BANK_SIGN_TRIGGER_LINE: &str = "A slightly larger sign saying 'Please Don't Rob Us.'";
 const FORCE_PLEASE_DONT_ROB_US_SIGN: bool = false;
 const CONDITIONAL_POOL_PICK_CHANCE: f64 = 0.5;
@@ -630,7 +632,7 @@ fn setup_newspaper_ui(mut commands: Commands) {
                         ..default()
                     },
                     BackgroundColor(Color::srgb(0.96, 0.94, 0.88)),
-                    BorderColor::all(Color::BLACK),
+                    BorderColor::all(hex_color!(0x9c7474)),
                     NewspaperPaperPanel,
                 ))
                 .with_children(|paper| {
@@ -688,9 +690,8 @@ fn toggle_newspaper_ui(
     receipt_cache: Option<Res<ReceiptCache>>,
     mut lock: ResMut<PlayerMovementLock>,
 ) {
-    let pressed_close = keyboard.just_pressed(KeyCode::Enter)
-        || keyboard.just_pressed(KeyCode::NumpadEnter)
-        || keyboard.just_pressed(KeyCode::Escape);
+    let pressed_close = (ui.open && keyboard.just_pressed(KeyCode::Escape))
+        || (!ui.open && (keyboard.just_pressed(KeyCode::Enter) || keyboard.just_pressed(KeyCode::NumpadEnter)));
 
     if keyboard.just_pressed(KeyCode::KeyR) {
         let latest_idx = receipt_cache
@@ -741,8 +742,9 @@ fn toggle_newspaper_ui(
     }
 
     let in_tavern = loaded_map_path(&loaded_map) == TAVERN_MAP_PATH;
-    if !in_tavern {
-        // Keep receipt mode usable outside the tavern.
+    let in_allowed_premises = loaded_map_path(&loaded_map) == NEWSPAPER_OFFICE_MAP_PATH || in_tavern;
+    if !in_allowed_premises {
+        // Keep receipt mode usable outside the tavern/newspaper office.
         if ui.open && ui.receipt_index.is_none() {
             ui.open = false;
             ui.receipt_index = None;

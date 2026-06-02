@@ -117,6 +117,8 @@ pub fn spawn_collision_boxes_for_layers_containing(
             continue;
         }
 
+        println!("adding boxes for {}", name);
+
         let grid_size = layer
             .get("__gridSize")
             .and_then(Value::as_i64)

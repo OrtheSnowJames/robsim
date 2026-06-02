@@ -295,7 +295,7 @@ const TILE_VISUAL_SPECS: &[TileVisualSpec] = &[
         with_collision: false,
     },
     TileVisualSpec {
-        identifier: "Water",
+        identifier: "Water_bounding",
         z: TOWN_ENTITY_Z - 1.5,
         display_size: NORMAL_DISPLAY_SIZE,
         with_collision: true,
@@ -480,7 +480,37 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_y_from_top_left: true,
         with_collision: true,
         kind: EntityVisualKind::Generic
-    }
+    },
+    EntityVisualSpec {
+        identifier: "Newspaperer",
+        image_path: "back_town/newspaperer.png",
+        z: TOWN_ENTITY_Z,
+        display_size: Some(Vec2::splat(32.0)),
+        ldtk_center_x_from_top_left: true,
+        ldtk_center_y_from_top_left: true,
+        with_collision: true,
+        kind: EntityVisualKind::Generic
+    },
+    EntityVisualSpec {
+        identifier: "Printer",
+        image_path: "back_town/printer.png",
+        z: TOWN_ENTITY_Z,
+        display_size: Some(Vec2::splat(32.0)),
+        ldtk_center_x_from_top_left: true,
+        ldtk_center_y_from_top_left: true,
+        with_collision: true,
+        kind: EntityVisualKind::Generic
+    },
+    EntityVisualSpec {
+        identifier: "Newspaper_office",
+        image_path: "back_town/newspaper_office.png",
+        z: TOWN_ENTITY_Z,
+        display_size: Some(Vec2::splat(64.0)),
+        ldtk_center_x_from_top_left: true,
+        ldtk_center_y_from_top_left: true,
+        with_collision: true,
+        kind: EntityVisualKind::Generic
+    },
 ];
 
 fn entity_visual_spec(identifier: &str) -> Option<&'static EntityVisualSpec> {
@@ -627,7 +657,8 @@ pub fn apply_tile_layer_visual_specs(
     layers: Query<(Entity, &Name), Without<LockGlobalZ>>,
 ) {
     for (entity, name) in &layers {
-        if let Some(spec) = tile_visual_spec(name.as_str()) {
+        let visual_spec = tile_visual_spec(name.as_str());
+        if let Some(spec) = visual_spec {
             commands.entity(entity).insert(LockGlobalZ(spec.z));
             println!(
                 "[TileVisualSpec] Applied LockGlobalZ {} to layer `{}` ({:?})",

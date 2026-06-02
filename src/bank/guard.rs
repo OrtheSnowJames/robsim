@@ -8,7 +8,7 @@ use crate::bank::{Grid, GridType};
 use crate::entity_dialogue::PlayerMovementLock;
 use crate::map::{HeistLifetimeStats, HeistRunStats};
 use crate::player::Player;
-use crate::receipts::{Receipt, ReceiptCache};
+use crate::receipts::Receipt;
 use crate::sprite_sheet::{
     apply_animator_to_sprite, tick_animator, Facing, FacingColumns, SpriteSheetAnimator,
     SpriteSheetConfig,
@@ -503,7 +503,6 @@ pub fn update_guards(
     mut alert: ResMut<GuardAlertState>,
     mut capture: ResMut<GuardCaptureSequence>,
     mut shared_lock_state: ResMut<SharedGuardLockState>,
-    mut receipt_cache: Option<ResMut<ReceiptCache>>,
     mut movement_lock: Option<ResMut<PlayerMovementLock>>,
     mut player_query: Query<&mut Transform, With<Player>>,
     mut guards: Query<
@@ -816,17 +815,13 @@ pub fn update_guards(
             } else {
                 (0.0, false)
             };
-            capture.dialogue_line = random_capture_line(
-                asset_server.as_ref(),
-                receipt_cache.as_deref_mut(),
-                CaptureLineContext {
-                    money,
-                    survival_secs,
-                    stopped_at_shaft,
-                    successful_robberies,
-                    failed_robberies,
-                },
-            );
+            capture.dialogue_line = random_capture_line(CaptureLineContext {
+                money,
+                survival_secs,
+                stopped_at_shaft,
+                successful_robberies,
+                failed_robberies,
+            });
             if let Some(lock) = movement_lock.as_deref_mut() {
                 lock.active = true;
             }
@@ -910,12 +905,7 @@ struct CaptureLineContext {
     failed_robberies: u32,
 }
 
-fn random_capture_line(
-    asset_server: &AssetServer,
-    receipt_cache: Option<&mut ReceiptCache>,
-    ctx: CaptureLineContext,
-) -> String {
-    let _ = asset_server;
+fn random_capture_line(ctx: CaptureLineContext) -> String {
     let receipt = Receipt {
         successful: false,
         money: ctx.money,
@@ -926,11 +916,7 @@ fn random_capture_line(
         time_till_death_secs: Some(ctx.survival_secs),
         heist_duration_secs: ctx.survival_secs,
     };
-    let lines_object = if let Some(cache) = receipt_cache {
-        cache.get_or_build_lines_object(receipt)
-    } else {
-        receipt.lines_object()
-    };
+    let lines_object = receipt.lines_object();
     let Some(json) = lines_object else {
         return GUARD_CAPTURE_DIALOGUE.to_string();
     };

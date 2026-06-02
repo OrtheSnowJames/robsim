@@ -6,6 +6,8 @@ Blue Moon Bank gets robbed surprisingly often. Rob a bank, read the newspaper, a
 
 ## Core Loop
 
+For a visual diagram, refer to the [markdown file](flow.md)
+
 1. Enter Blue Moon Bank and press `F` to open the vault. The guards will soon become interested in your activities.
 2. Rob the bank. Navigate a maze filled with guards while using your radar (top-right corner) to track their positions.
 

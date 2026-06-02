@@ -245,6 +245,49 @@ const TELLER_DIALOGUE: &[DialogueNode] = &[
     },
 ];
 
+const NEWSPAPERER_DIALOGUE: &[DialogueNode] = &[
+    DialogueNode::Line {
+        text: "I've always wondered who the robber is.",
+        next: Some(1),
+    },
+    DialogueNode::YesNo {
+        prompt: "Would you tell me if you knew?",
+        yes_next: 2,
+        no_next: 5,
+    },
+    DialogueNode::Line {
+        text: "Interesting.",
+        next: Some(3),
+    },
+    DialogueNode::Line {
+        text: "That's exactly what an honest person would say.",
+        next: Some(4),
+    },
+    DialogueNode::Line {
+        text: "Probably.",
+        next: None,
+    },
+    DialogueNode::Line {
+        text: "Also interesting.",
+        next: Some(6),
+    },
+    DialogueNode::Line {
+        text: "That's exactly what a robber would say.",
+        next: None,
+    },
+];
+
+const PRINTER_DIALOGUE: &[DialogueNode] = &[
+    DialogueNode::Line {
+        text: "The printer is warm.",
+        next: Some(1),
+    },
+    DialogueNode::Line {
+        text: "Another robbery must have happened recently.",
+        next: None,
+    },
+];
+
 const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
     EntityDialogueSpec {
         identifier: "Bartender",
@@ -328,6 +371,22 @@ const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
         interact_offset: Vec2::ZERO,
         on_complete_scene: Some("maps/town.ldtk"),
     },
+    EntityDialogueSpec {
+        identifier: "Newspaperer",
+        start: 0,
+        nodes: NEWSPAPERER_DIALOGUE,
+        interact_radius: INTERACT_RADIUS / 1.5,
+        interact_offset: Vec2::ZERO,
+        on_complete_scene: None,
+    },
+    EntityDialogueSpec {
+        identifier: "Printer",
+        start: 0,
+        nodes: PRINTER_DIALOGUE,
+        interact_radius: INTERACT_RADIUS / 1.5,
+        interact_offset: Vec2::ZERO,
+        on_complete_scene: None
+    }
 ];
 
 fn find_spec_index(identifier: &str) -> Option<usize> {
