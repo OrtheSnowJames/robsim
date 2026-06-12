@@ -1,12 +1,14 @@
 use bevy::prelude::*;
+use bevy_ecs_ldtk::LdtkProjectHandle;
+use bevy_ecs_ldtk::prelude::LdtkProject;
 use serde_json::Value;
 use std::collections::HashSet;
 
 use crate::collision::BoundingBox;
 
 use super::ldtk::{
-    ldtk_first_level, ldtk_layer_instances, ldtk_level_dimensions, loaded_map_path, read_map_json,
-    LoadedMap,
+    LoadedMap, ldtk_first_level, ldtk_layer_instances, ldtk_level_dimensions, loaded_map_path,
+    read_loaded_map_json,
 };
 
 const MAZE_SCENE_KEY: &str = "maze";
@@ -28,10 +30,10 @@ pub struct MapOutlineCollision;
 pub struct MapLayerCollision;
 
 pub fn collision_box_outline(
-    loaded_map: &LoadedMap,
+    json: &Value,
     tile_size: f32,
 ) -> Result<Vec<(IVec2, BoundingBox)>, String> {
-    let (width, height) = current_map_dimensions(loaded_map)?;
+    let (width, height) = current_map_dimensions(json)?;
     let mut boxes = Vec::new();
 
     for cell in outer_border_cells(width as i32, height as i32) {
@@ -47,8 +49,7 @@ pub fn collision_box_outline(
     Ok(boxes)
 }
 
-fn current_map_dimensions(loaded_map: &LoadedMap) -> Result<(usize, usize), String> {
-    let json = read_map_json(loaded_map)?;
+fn current_map_dimensions(json: &Value) -> Result<(usize, usize), String> {
     let first_level = ldtk_first_level(&json)?;
     let layers = ldtk_layer_instances(first_level)?;
     ldtk_level_dimensions(first_level, layers)
@@ -74,12 +75,24 @@ fn outer_border_cells(width: i32, height: i32) -> Vec<IVec2> {
 
 pub fn spawn_collision_box_outline(
     commands: &mut Commands,
-    loaded_map: &LoadedMap,
+    json: &Value,
     tile_size: f32,
     world_origin: Vec2,
     z: f32,
 ) -> Result<usize, String> {
-    let cells = collision_box_outline(loaded_map, tile_size)?;
+    let (width, height) = current_map_dimensions(json)?;
+    let cells = outer_border_cells(width as i32, height as i32)
+        .into_iter()
+        .map(|cell| {
+            (
+                cell,
+                BoundingBox {
+                    width: tile_size,
+                    height: tile_size,
+                },
+            )
+        })
+        .collect::<Vec<_>>();
     let mut spawned = 0usize;
 
     for (cell, bounds) in cells {
@@ -94,14 +107,13 @@ pub fn spawn_collision_box_outline(
 
 pub fn spawn_collision_boxes_for_layers_containing(
     commands: &mut Commands,
-    loaded_map: &LoadedMap,
+    json: &Value,
     phrase: &str,
     tile_size: f32,
     world_origin: Vec2,
     z: f32,
 ) -> Result<usize, String> {
-    let json = read_map_json(loaded_map)?;
-    let level = ldtk_first_level(&json)?;
+    let level = ldtk_first_level(json)?;
     let layers = ldtk_layer_instances(level)?;
     let (_, level_height) = ldtk_level_dimensions(level, layers)?;
 
@@ -201,6 +213,8 @@ fn collect_cells_from_tile_array(
 pub fn sync_map_outline_collision(
     mut commands: Commands,
     loaded_map: Res<LoadedMap>,
+    ldtk_world_query: Query<&LdtkProjectHandle>,
+    ldtk_projects: Res<Assets<LdtkProject>>,
     mut map_collision_state: ResMut<MapCollisionState>,
     existing_outline: Query<Entity, With<MapOutlineCollision>>,
     existing_layer_collision: Query<Entity, With<MapLayerCollision>>,
@@ -226,16 +240,19 @@ pub fn sync_map_outline_collision(
     for e in &existing_layer_collision {
         commands.entity(e).try_despawn();
     }
+    let Ok(json) = read_loaded_map_json(&ldtk_world_query, ldtk_projects.as_ref()) else {
+        return;
+    };
     let _ = spawn_collision_box_outline(
         &mut commands,
-        &loaded_map,
+        &json,
         MAP_GRID_TILE_SIZE,
         Vec2::new(MAP_GRID_ORIGIN_X, MAP_GRID_ORIGIN_Y),
         MAP_COLLISION_Z,
     );
     let _ = spawn_collision_boxes_for_layers_containing(
         &mut commands,
-        &loaded_map,
+        &json,
         MAP_COLLISION_LAYER_PHRASE,
         MAP_GRID_TILE_SIZE,
         Vec2::new(MAP_GRID_ORIGIN_X, MAP_GRID_ORIGIN_Y),

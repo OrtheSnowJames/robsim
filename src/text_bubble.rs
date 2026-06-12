@@ -17,11 +17,7 @@ impl Plugin for TextBubblePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (
-                spawn_text_bubbles,
-                sync_text_bubbles,
-                cleanup_text_bubbles,
-            ),
+            (spawn_text_bubbles, sync_text_bubbles, cleanup_text_bubbles),
         );
     }
 }
@@ -114,10 +110,7 @@ fn spawn_text_bubbles(
 
         let root_pos = bubble_root_translation(owner, bubble, size);
         let root = commands
-            .spawn((
-                Transform::from_translation(root_pos),
-                Visibility::Inherited,
-            ))
+            .spawn((Transform::from_translation(root_pos), Visibility::Inherited))
             .id();
 
         let bubble_sprite = commands
@@ -189,7 +182,11 @@ fn sync_text_bubbles(
         }
     }
 
-    layout.sort_by(|a, b| a.4.y.partial_cmp(&b.4.y).unwrap_or(std::cmp::Ordering::Equal));
+    layout.sort_by(|a, b| {
+        a.4.y
+            .partial_cmp(&b.4.y)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let mut placed: Vec<(Vec2, Vec2)> = Vec::new();
 
     for (owner, root, visible, size, mut world_pos) in layout {

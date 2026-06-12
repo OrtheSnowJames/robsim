@@ -2,8 +2,8 @@ use bevy::prelude::{Color, IVec2, Vec2};
 use bevy_ecs_ldtk::ldtk::{
     AutoLayerRuleDefinition, AutoLayerRuleGroup, Checker, Definitions, EntityDefinition,
     EntityInstance, ImageExportMode, IntGridValueDefinition, LayerDefinition, LayerInstance,
-    LdtkJson, Level, LimitBehavior, LimitScope, RenderMode, TileInstance, TileMode,
-    TileRenderMode, TilesetDefinition, TilesetRectangle, Type,
+    LdtkJson, Level, LimitBehavior, LimitScope, RenderMode, TileInstance, TileMode, TileRenderMode,
+    TilesetDefinition, TilesetRectangle, Type,
 };
 use serde_json::Value;
 use std::error::Error;
@@ -38,8 +38,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         .and_then(|levels| levels.first())
         .ok_or("missing levels[0] in source map")?;
 
-    let width = level.get("width").and_then(Value::as_i64).ok_or("missing level width")? as i32;
-    let height = level.get("height").and_then(Value::as_i64).ok_or("missing level height")? as i32;
+    let width = level
+        .get("width")
+        .and_then(Value::as_i64)
+        .ok_or("missing level width")? as i32;
+    let height = level
+        .get("height")
+        .and_then(Value::as_i64)
+        .ok_or("missing level height")? as i32;
     let grid_size = source_json
         .get("schema")
         .and_then(|s| s.get("project"))
@@ -158,7 +164,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             d: vec![idx as i32],
             f: flip,
             px: IVec2::new(x * grid_size, y * grid_size),
-            src: IVec2::new((tile_x * grid_size as u32) as i32, (tile_y * grid_size as u32) as i32),
+            src: IVec2::new(
+                (tile_x * grid_size as u32) as i32,
+                (tile_y * grid_size as u32) as i32,
+            ),
             t: tile_index as i32,
         });
     }
@@ -347,7 +356,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 tavern_size.0 as i32,
                 tavern_size.1 as i32,
             ),
-            make_entity_instance("PlayerStart", ENTITY_PLAYER_START_UID, "2764be0d-8ec0-4f09-9be3-3642f3c8cf57", player_start_pos, level_px_hei, 16, 16),
+            make_entity_instance(
+                "PlayerStart",
+                ENTITY_PLAYER_START_UID,
+                "2764be0d-8ec0-4f09-9be3-3642f3c8cf57",
+                player_start_pos,
+                level_px_hei,
+                16,
+                16,
+            ),
         ],
         ..Default::default()
     };

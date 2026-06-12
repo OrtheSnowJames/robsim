@@ -1,10 +1,9 @@
-use bevy::prelude::*;
-use bevy_ecs_ldtk::{
-    EntityInstance, LdtkProjectHandle, prelude::LdtkProject, ldtk::TileRenderMode,
-};
 use bevy::asset::RenderAssetUsages;
+use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use rand::RngExt;
+use bevy_ecs_ldtk::{
+    EntityInstance, LdtkProjectHandle, ldtk::TileRenderMode, prelude::LdtkProject,
+};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,6 +15,7 @@ use crate::bank::render::maze::TILE_SIZE;
 use crate::bank::teller::{TellerSprite, VaultSprite};
 use crate::collision::BoundingBox;
 use crate::player::PLAYER_Z_LAYER;
+use crate::random::random_bool;
 
 fn combine_images(base: &Image, overlay: &Image) -> Image {
     // 1. Create a copy of the base image data to work on
@@ -51,7 +51,7 @@ fn combine_images(base: &Image, overlay: &Image) -> Image {
             );
         }
     };
-    
+
     let base_width = base.width() as usize;
     let overlay_width = overlay.width() as usize;
     let overlay_height = overlay.height() as usize;
@@ -69,20 +69,20 @@ fn combine_images(base: &Image, overlay: &Image) -> Image {
 
             // 3. Perform Alpha Blending
             let overlay_alpha = overlay_data[overlay_idx + 3] as f32 / 255.0;
-            
+
             if overlay_alpha > 0.0 {
-                for i in 0..3 { // RGB channels
+                for i in 0..3 {
+                    // RGB channels
                     let base_pixel = combined_data[base_idx + i] as f32;
                     let overlay_pixel = overlay_data[overlay_idx + i] as f32;
-                    
+
                     // Standard linear blend formula
-                    combined_data[base_idx + i] = (
-                        (base_pixel * (1.0 - overlay_alpha)) + 
-                        (overlay_pixel * overlay_alpha)
-                    ) as u8;
+                    combined_data[base_idx + i] = ((base_pixel * (1.0 - overlay_alpha))
+                        + (overlay_pixel * overlay_alpha))
+                        as u8;
                 }
                 // Set final alpha to opaque or blend it if needed
-                combined_data[base_idx + 3] = 255; 
+                combined_data[base_idx + 3] = 255;
             }
         }
     }
@@ -118,7 +118,6 @@ impl BankIcon {
     }
 }
 
-
 pub struct BankImgOpt {
     pub icon: BankIcon,
     pub open: bool,
@@ -138,12 +137,13 @@ impl Plugin for BankImgLayerPlugin {
     }
 }
 
-static BANK_IMAGE_CACHE: OnceLock<Mutex<HashMap<(bool, BankIcon), Handle<Image>>>> = OnceLock::new();
+static BANK_IMAGE_CACHE: OnceLock<Mutex<HashMap<(bool, BankIcon), Handle<Image>>>> =
+    OnceLock::new();
 static BANK_IMAGE_MISS_LOGGED: OnceLock<Mutex<HashSet<(bool, BankIcon)>>> = OnceLock::new();
 static BANK_ICON_HANDLE_CACHE: OnceLock<Mutex<HashMap<BankIcon, Handle<Image>>>> = OnceLock::new();
 
 pub fn get_bank_img(
-    opt: BankImgOpt, 
+    opt: BankImgOpt,
     assets: &AssetServer,
     images: &mut Assets<Image>,
 ) -> Handle<Image> {
@@ -225,9 +225,9 @@ pub fn randomize_bank_img(
     mut bank_icon: Option<ResMut<BankIcon>>,
 ) {
     for message in messages.read() {
-        let mut rng = rand::rng();
-        let picked_icon = if rng.random_bool(0.5) {
-            BankIcon::Blank
+        let picked_icon = if random_bool(0.5) {
+            // BankIcon::Blank
+            BankIcon::BlueMoon
         } else {
             BankIcon::BlueMoon
         };
@@ -310,8 +310,8 @@ const TILE_VISUAL_SPECS: &[TileVisualSpec] = &[
         identifier: "Bars",
         z: IN_FRONT_OF_PLAYER_Z,
         display_size: NORMAL_DISPLAY_SIZE,
-        with_collision: false
-    }
+        with_collision: false,
+    },
 ];
 
 pub fn tile_visual_spec(identifier: &str) -> Option<&'static TileVisualSpec> {
@@ -359,7 +359,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: true,
         ldtk_center_y_from_top_left: false,
         with_collision: false,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
     },
     EntityVisualSpec {
         identifier: "Teller",
@@ -369,7 +369,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: true,
         ldtk_center_y_from_top_left: false,
         with_collision: false,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
     },
     EntityVisualSpec {
         identifier: "Bank_teller",
@@ -379,7 +379,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: true,
         ldtk_center_y_from_top_left: false,
         with_collision: false,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
     },
     EntityVisualSpec {
         identifier: "Newspapers",
@@ -399,7 +399,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: false,
         ldtk_center_y_from_top_left: false,
         with_collision: true,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
     },
     EntityVisualSpec {
         identifier: "Bar_guy_1",
@@ -439,7 +439,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: true,
         ldtk_center_y_from_top_left: true,
         with_collision: true,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
     },
     EntityVisualSpec {
         identifier: "Jail",
@@ -449,7 +449,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: false,
         ldtk_center_y_from_top_left: false,
         with_collision: false,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
     },
     EntityVisualSpec {
         identifier: "Bars",
@@ -459,7 +459,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: false,
         ldtk_center_y_from_top_left: false,
         with_collision: false,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
     },
     EntityVisualSpec {
         identifier: "House",
@@ -469,7 +469,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: true,
         ldtk_center_y_from_top_left: true,
         with_collision: true,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
     },
     EntityVisualSpec {
         identifier: "Bed",
@@ -479,7 +479,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: false,
         ldtk_center_y_from_top_left: true,
         with_collision: true,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
     },
     EntityVisualSpec {
         identifier: "Newspaperer",
@@ -489,7 +489,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: true,
         ldtk_center_y_from_top_left: true,
         with_collision: true,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
     },
     EntityVisualSpec {
         identifier: "Printer",
@@ -499,7 +499,7 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: true,
         ldtk_center_y_from_top_left: true,
         with_collision: true,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
     },
     EntityVisualSpec {
         identifier: "Newspaper_office",
@@ -509,7 +509,17 @@ const ENTITY_VISUAL_SPECS: &[EntityVisualSpec] = &[
         ldtk_center_x_from_top_left: true,
         ldtk_center_y_from_top_left: true,
         with_collision: true,
-        kind: EntityVisualKind::Generic
+        kind: EntityVisualKind::Generic,
+    },
+    EntityVisualSpec {
+        identifier: "Gremlin",
+        image_path: "back_town/gremlin.png",
+        z: TOWN_ENTITY_Z,
+        display_size: Some(Vec2::splat(32.0)),
+        ldtk_center_x_from_top_left: true,
+        ldtk_center_y_from_top_left: true,
+        with_collision: true,
+        kind: EntityVisualKind::Generic,
     },
 ];
 
@@ -575,19 +585,21 @@ pub fn materialize_ldtk_entity_sprites(
             continue;
         };
 
-        let size =
-            read_png_dimensions(project_asset_path(spec.image_path).to_string_lossy().as_ref())
-                .unwrap_or((instance.width as u32, instance.height as u32));
+        let size = read_png_dimensions(
+            project_asset_path(spec.image_path)
+                .to_string_lossy()
+                .as_ref(),
+        )
+        .unwrap_or((instance.width as u32, instance.height as u32));
 
         let image = match spec.kind {
             EntityVisualKind::Bank => bank_dynamic_image_handle.clone(),
             EntityVisualKind::Generic => assets.load::<Image>(spec.image_path),
         };
 
-        let effective_display_size = spec.display_size.unwrap_or(Vec2::new(
-            instance.width as f32,
-            instance.height as f32,
-        ));
+        let effective_display_size = spec
+            .display_size
+            .unwrap_or(Vec2::new(instance.width as f32, instance.height as f32));
         let instance_size = Vec2::new(instance.width as f32, instance.height as f32);
         let center_delta = (effective_display_size - instance_size) * 0.5;
 
@@ -627,10 +639,7 @@ pub fn materialize_ldtk_entity_sprites(
         if spec.identifier.eq_ignore_ascii_case("Vault") {
             entity_cmd.insert(VaultSprite);
         }
-        if matches!(
-            spec.identifier,
-            "Bear" | "Teller" | "Bank_teller"
-        ) {
+        if matches!(spec.identifier, "Bear" | "Teller" | "Bank_teller") {
             entity_cmd.insert(TellerSprite);
         }
     }
@@ -660,12 +669,14 @@ pub fn apply_tile_layer_visual_specs(
         let visual_spec = tile_visual_spec(name.as_str());
         if let Some(spec) = visual_spec {
             commands.entity(entity).insert(LockGlobalZ(spec.z));
+            /*
             println!(
                 "[TileVisualSpec] Applied LockGlobalZ {} to layer `{}` ({:?})",
                 spec.z,
                 name.as_str(),
                 entity
             );
+            */
         }
     }
 }

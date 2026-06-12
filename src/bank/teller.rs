@@ -1,12 +1,12 @@
 use bevy::prelude::*;
-use rand::RngExt;
 use serde_json::Value;
-use std::fs;
-use std::path::Path;
 
 use crate::collision::BoundingBox;
-use crate::map::{loaded_map_path, LdtkEntityByNameQuery, LoadedMap};
-use crate::player::Player;
+use crate::entity_dialogue::DisabledEntityDialogues;
+use crate::map::{LdtkEntityByNameQuery, LoadedMap, loaded_map_path};
+use crate::multiplayer::MultiplayerSession;
+use crate::player::{LocalPlayer, Player};
+use crate::random::random_range_usize;
 use crate::text_bubble::TextBubble;
 
 #[derive(Component)]
@@ -22,14 +22,7 @@ pub struct BankHeistState {
 
 fn random_rob_dialogue(asset_server: &AssetServer) -> (String, String) {
     let _ = asset_server;
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("assets")
-        .join("lines.jsonc");
-    let Ok(raw) = fs::read_to_string(path) else {
-        return ("Hands Up!".to_string(), "O-Okay, okay!".to_string());
-    };
-
-    let cleaned = raw
+    let cleaned = include_str!("../../assets/lines.jsonc")
         .lines()
         .filter(|line| !line.trim_start().starts_with("//"))
         .collect::<Vec<_>>()
@@ -45,8 +38,7 @@ fn random_rob_dialogue(asset_server: &AssetServer) -> (String, String) {
         return ("Hands Up!".to_string(), "O-Okay, okay!".to_string());
     }
 
-    let mut rng = rand::rng();
-    let idx = rng.random_range(0..rob_lines.len());
+    let idx = random_range_usize(0..rob_lines.len());
     let picked = &rob_lines[idx];
     let player_line = picked
         .get("1")
@@ -63,9 +55,11 @@ fn random_rob_dialogue(asset_server: &AssetServer) -> (String, String) {
 
 pub fn trigger_bank_heist(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    player_entity_q: Query<Entity, With<Player>>,
+    player_entity_q: Query<Entity, (With<Player>, With<LocalPlayer>)>,
     loaded_map: Res<LoadedMap>,
+    multiplayer_session: Option<Res<MultiplayerSession>>,
     mut heist_state: ResMut<BankHeistState>,
+    mut disabled_dialogues: ResMut<DisabledEntityDialogues>,
     assets: Res<AssetServer>,
     ldtk_entities: LdtkEntityByNameQuery,
     mut sprites: Query<&mut Sprite>,
@@ -73,10 +67,19 @@ pub fn trigger_bank_heist(
 ) {
     if loaded_map_path(&loaded_map) != "maps/bank.ldtk" {
         heist_state.vault_opened = false;
+        disabled_dialogues.clear();
         return;
     }
 
     if heist_state.vault_opened || !keyboard_input.just_pressed(KeyCode::KeyF) {
+        return;
+    }
+
+    if multiplayer_session
+        .as_deref()
+        .map(|session| session.is_connected() && !session.local_is_host())
+        .unwrap_or(false)
+    {
         return;
     }
 
@@ -95,14 +98,15 @@ pub fn trigger_bank_heist(
         }
     }
 
-    let player_entity = player_entity_q.single().unwrap();
-    commands.entity(player_entity).insert(TextBubble {
-        message: player_line,
-        offset: Vec2::new(0.0, 22.0),
-        visible: true,
-    });
+    disabled_dialogues.disable("Bear");
 
-    
+    if let Ok(player_entity) = player_entity_q.single() {
+        commands.entity(player_entity).insert(TextBubble {
+            message: player_line,
+            offset: Vec2::new(0.0, 22.0),
+            visible: true,
+        });
+    }
 
     for (entity, _, _) in ldtk_entities.iter_named("Vault") {
         let Ok(mut sprite) = sprites.get_mut(entity) else {

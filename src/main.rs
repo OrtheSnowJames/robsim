@@ -1,3 +1,4 @@
+use bevy::asset::AssetMetaCheck;
 use bevy::prelude::*;
 use robsim::PlayerMoney;
 use robsim::bank::BankPlugin;
@@ -9,13 +10,14 @@ use robsim::bank::img_layer::{
 use robsim::bank::render::maze::{collect_coins, update_maze_lighting};
 use robsim::bank::teller::{BankHeistState, trigger_bank_heist};
 use robsim::collision::CollisionPlugin;
-use robsim::entity_dialogue::EntityDialoguePlugin;
 use robsim::enter_interact::EnterInteractPlugin;
+use robsim::entity_dialogue::EntityDialoguePlugin;
 use robsim::hud::HudPlugin;
 use robsim::map::scene::{apply_scene_background_spec, setup_bg, sync_bg_with_camera};
 use robsim::map::{
-    HeistLifetimeStats, HeistRunStats, MapCollisionState, MapPlugin, SceneTransferCooldown,
-    SceneTransitionState, handle_guard_capture, handle_maze_exit, handle_scene_change_request,
+    HeistLifetimeStats, HeistRunStats, MapCollisionState, MapPlugin, PendingMazeSpawn,
+    SceneTransferCooldown, SceneTransitionState, apply_pending_maze_spawn, handle_guard_capture,
+    handle_maze_exit, handle_multiplayer_maze_transition_request, handle_scene_change_request,
     setup_camera_and_fade, sync_map_outline_collision, sync_scene_fade_overlay,
     trigger_scene_transfer, update_scene_transition,
 };
@@ -27,16 +29,27 @@ use robsim::tavern::TavernPlugin;
 use robsim::text_bubble::TextBubblePlugin;
 
 fn main() {
-    let asset_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("assets")
-        .to_string_lossy()
-        .to_string();
+    let asset_root = if cfg!(target_arch = "wasm32") {
+        "assets".to_string()
+    } else {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .to_string_lossy()
+            .to_string()
+    };
+
+    let meta_check = if cfg!(target_arch = "wasm32") {
+        AssetMetaCheck::Never
+    } else {
+        AssetMetaCheck::Always
+    };
 
     App::new()
         .add_plugins(
             DefaultPlugins
                 .set(AssetPlugin {
                     file_path: asset_root,
+                    meta_check,
                     ..default()
                 })
                 .set(ImagePlugin::default_nearest()),
@@ -44,6 +57,7 @@ fn main() {
         .add_plugins(CollisionPlugin)
         .add_plugins(MapPlugin)
         .add_plugins(PlayerPlugin)
+        .add_plugins(robsim::multiplayer::MultiplayerPlugin)
         .add_plugins(BankPlugin)
         .add_plugins(HudPlugin)
         .add_plugins(TavernPlugin)
@@ -57,6 +71,7 @@ fn main() {
         .init_resource::<GuardAlertState>()
         .init_resource::<SceneTransferCooldown>()
         .init_resource::<SceneTransitionState>()
+        .init_resource::<PendingMazeSpawn>()
         .init_resource::<HeistLifetimeStats>()
         .init_resource::<HeistRunStats>()
         .init_resource::<MapCollisionState>()
@@ -77,7 +92,9 @@ fn main() {
                 handle_guard_capture.after(update_guards),
                 handle_maze_exit.after(PlayerSystemSet::Move),
                 handle_scene_change_request.after(PlayerSystemSet::Move),
-                update_scene_transition,
+                handle_multiplayer_maze_transition_request.after(handle_scene_change_request),
+                update_scene_transition.after(handle_multiplayer_maze_transition_request),
+                apply_pending_maze_spawn.after(update_scene_transition),
             ),
         )
         .add_systems(Update, trigger_scene_transfer.after(PlayerSystemSet::Move))

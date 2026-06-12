@@ -1,19 +1,19 @@
 use bevy::prelude::*;
 use bevy_ecs_ldtk::EntityInstance;
 
-use crate::player::Player;
+use crate::player::{LocalPlayer, Player};
 use crate::prompt_key::KeyPrompt;
 
-pub const CALLBACK_OPEN_NEWSPAPER: &str = "open_newspaper";
+pub const CALLBACK_OPEN_DISPLAY: &str = "open_display";
 pub const CALLBACK_OPEN_RECEIPTS: &str = "open_receipts";
-pub const NEWSPAPER_ENTITY_IDENTIFIER: &str = "Newspapers";
+pub const DISPLAY_ENTITY_IDENTIFIER: &str = "Newspapers";
 pub const CHEST_ENTITY_IDENTIFIER: &str = "Chest";
-pub const NEWSPAPER_INTERACT_RADIUS: f32 = 20.0;
+pub const DISPLAY_INTERACT_RADIUS: f32 = 20.0;
 pub const CHEST_INTERACT_RADIUS: f32 = 26.0;
 
 #[derive(Message, Clone, Copy)]
 pub enum EnterInteractCallbackEvent {
-    OpenNewspaper(Entity),
+    OpenDisplay(Entity),
     OpenReceipts(Entity),
 }
 
@@ -28,8 +28,8 @@ pub struct EnterInteractSpec {
     pub callback: EnterInteractCallback,
 }
 
-fn emit_open_newspaper(entity: Entity, writer: &mut MessageWriter<EnterInteractCallbackEvent>) {
-    writer.write(EnterInteractCallbackEvent::OpenNewspaper(entity));
+fn emit_open_display(entity: Entity, writer: &mut MessageWriter<EnterInteractCallbackEvent>) {
+    writer.write(EnterInteractCallbackEvent::OpenDisplay(entity));
 }
 
 fn emit_open_receipts(entity: Entity, writer: &mut MessageWriter<EnterInteractCallbackEvent>) {
@@ -38,11 +38,11 @@ fn emit_open_receipts(entity: Entity, writer: &mut MessageWriter<EnterInteractCa
 
 const ENTER_INTERACT_SPECS: &[EnterInteractSpec] = &[
     EnterInteractSpec {
-        identifier: NEWSPAPER_ENTITY_IDENTIFIER,
-        radius: NEWSPAPER_INTERACT_RADIUS,
+        identifier: DISPLAY_ENTITY_IDENTIFIER,
+        radius: DISPLAY_INTERACT_RADIUS,
         world_offset: Vec2::ZERO,
-        callback_key: CALLBACK_OPEN_NEWSPAPER,
-        callback: emit_open_newspaper,
+        callback_key: CALLBACK_OPEN_DISPLAY,
+        callback: emit_open_display,
     },
     EnterInteractSpec {
         identifier: CHEST_ENTITY_IDENTIFIER,
@@ -65,8 +65,10 @@ pub struct EnterInteractPlugin;
 
 impl Plugin for EnterInteractPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<EnterInteractCallbackEvent>()
-            .add_systems(Update, (attach_enter_interact_triggers, handle_enter_interact));
+        app.add_message::<EnterInteractCallbackEvent>().add_systems(
+            Update,
+            (attach_enter_interact_triggers, handle_enter_interact),
+        );
     }
 }
 
@@ -108,7 +110,7 @@ fn attach_enter_interact_triggers(
 
 fn handle_enter_interact(
     keyboard: Res<ButtonInput<KeyCode>>,
-    player_q: Query<&Transform, With<Player>>,
+    player_q: Query<&Transform, (With<Player>, With<LocalPlayer>)>,
     trigger_q: Query<(Entity, &GlobalTransform, &EnterInteractTrigger)>,
     mut callback_writer: MessageWriter<EnterInteractCallbackEvent>,
 ) {

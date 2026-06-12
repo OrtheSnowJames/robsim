@@ -1,14 +1,15 @@
+use crate::map::{LoadedMap, SceneChangeRequest, loaded_map_path};
+use crate::nine_slicing::NineSliceBorder;
+use crate::player::{LocalPlayer, Player};
+use crate::prompt_key::KeyPrompt;
 use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
 use bevy_ecs_ldtk::EntityInstance;
-
-use crate::map::{loaded_map_path, LoadedMap, SceneChangeRequest};
-use crate::nine_slicing::NineSliceBorder;
-use crate::player::Player;
-use crate::prompt_key::KeyPrompt;
+use std::collections::HashSet;
 
 const INTERACT_RADIUS: f32 = 28.0;
 const LARGE_BUILDING_INTERACT_RADIUS: f32 = 120.0;
+const DIALOGUE_CHARS_PER_SECOND: f32 = 48.0;
 
 pub struct EntityDialoguePlugin;
 
@@ -19,12 +20,14 @@ impl Plugin for EntityDialoguePlugin {
             .init_resource::<PlayerMovementLock>()
             .init_resource::<DialogueUiState>()
             .init_resource::<DialogueEnabled>()
+            .init_resource::<DisabledEntityDialogues>()
             .add_systems(Startup, setup_dialogue_ui)
             .add_systems(
                 Update,
                 (
                     attach_dialogue_prompts,
                     handle_entity_dialogue,
+                    animate_dialogue_text,
                     apply_dialogue_ui_state,
                 ),
             );
@@ -33,12 +36,31 @@ impl Plugin for EntityDialoguePlugin {
 
 #[derive(Resource)]
 pub struct DialogueEnabled {
-    pub enabled: bool
+    pub enabled: bool,
 }
 
 impl Default for DialogueEnabled {
     fn default() -> Self {
         Self { enabled: true }
+    }
+}
+
+#[derive(Resource, Default)]
+pub struct DisabledEntityDialogues(HashSet<String>);
+
+impl DisabledEntityDialogues {
+    pub fn disable(&mut self, identifier: &str) {
+        self.0.insert(identifier.to_string());
+    }
+
+    pub fn is_disabled(&self, identifier: &str) -> bool {
+        self.0
+            .iter()
+            .any(|disabled| disabled.eq_ignore_ascii_case(identifier))
+    }
+
+    pub fn clear(&mut self) {
+        self.0.clear();
     }
 }
 
@@ -91,10 +113,41 @@ impl Default for TextboxMode {
     }
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 struct DialogueUiState {
     visible: bool,
-    text: String,
+    full_text: String,
+    revealed_chars: usize,
+    reveal_timer: Timer,
+}
+
+impl DialogueUiState {
+    fn display_text(&self) -> String {
+        self.full_text.chars().take(self.revealed_chars).collect()
+    }
+
+    fn is_fully_revealed(&self) -> bool {
+        self.revealed_chars >= self.full_text.chars().count()
+    }
+
+    fn reveal_all(&mut self) {
+        self.revealed_chars = self.full_text.chars().count();
+        self.reveal_timer.reset();
+    }
+}
+
+impl Default for DialogueUiState {
+    fn default() -> Self {
+        Self {
+            visible: false,
+            full_text: String::new(),
+            revealed_chars: 0,
+            reveal_timer: Timer::from_seconds(
+                1.0 / DIALOGUE_CHARS_PER_SECOND,
+                TimerMode::Repeating,
+            ),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -166,15 +219,15 @@ const BAR_GUY_2_DIALOGUE: &[DialogueNode] = &[
 const SOUP_STORE_DIALOGUE: &[DialogueNode] = &[
     DialogueNode::Line {
         text: "It's a soup store.",
-        next: Some(1)
+        next: Some(1),
     },
     DialogueNode::Line {
         text: "It's locked.",
-        next: Some(2)
+        next: Some(2),
     },
     DialogueNode::Line {
         text: "I heard you can enter via the vault...",
-        next: None
+        next: None,
     },
 ];
 
@@ -186,7 +239,7 @@ const SOUP_MAN_DIALOGUE: &[DialogueNode] = &[
     DialogueNode::Line {
         text: "Anyway, please don't drink the soup. It's still in the making.",
         next: None,
-    }
+    },
 ];
 
 const SOUP_DIALOGUE: &[DialogueNode] = &[
@@ -205,7 +258,7 @@ const SOUP_DIALOGUE: &[DialogueNode] = &[
     },
     DialogueNode::Line {
         text: "You decided not to drink the soup. :(",
-        next: None
+        next: None,
     },
 ];
 
@@ -236,11 +289,32 @@ const JAIL_GUARD_DIALOGUE: &[DialogueNode] = &[
 
 const TELLER_DIALOGUE: &[DialogueNode] = &[
     DialogueNode::Line {
-        text: "The guards are good at their jobs.",
+        text: "Welcome to Blue Moon Bank.",
         next: Some(1),
     },
+    DialogueNode::YesNo {
+        prompt: "Are you planning to rob the bank today?",
+        yes_next: 2,
+        no_next: 5,
+    },
     DialogueNode::Line {
-        text: "I wish the rest of us were.",
+        text: "I appreciate the honesty.",
+        next: Some(3),
+    },
+    DialogueNode::Line {
+        text: "Most people just wait until they're inside.",
+        next: Some(4),
+    },
+    DialogueNode::Line {
+        text: "Good luck, I suppose.",
+        next: None,
+    },
+    DialogueNode::Line {
+        text: "That's what they all say.",
+        next: Some(6),
+    },
+    DialogueNode::Line {
+        text: "Enjoy your visit.",
         next: None,
     },
 ];
@@ -288,17 +362,49 @@ const PRINTER_DIALOGUE: &[DialogueNode] = &[
     },
 ];
 
+const GREMLIN_TUTORIAL_DIALOGUE: &[DialogueNode] = &[
+    DialogueNode::YesNo {
+        prompt: "Want to see a tutorial?",
+        yes_next: 1,
+        no_next: 7,
+    },
+    DialogueNode::Line {
+        text: "Tutorial time.\n\nEnter Blue Moon Bank and press F to open the vault.",
+        next: Some(2),
+    },
+    DialogueNode::Line {
+        text: "Then rob the bank while guards chase you.\nUse the radar in the top-right corner to track them.",
+        next: Some(3),
+    },
+    DialogueNode::Line {
+        text: "If you succeed, you keep the money.",
+        next: Some(4),
+    },
+    DialogueNode::Line {
+        text: "That also unlocks new tavern dialogue and a newspaper article.",
+        next: Some(5),
+    },
+    DialogueNode::Line {
+        text: "You can review your robberies later at the house at the bottom of town.",
+        next: Some(6),
+    },
+    DialogueNode::Line {
+        text: "If you get caught, the guards will jail you.\nThen you can ask nicely to be let out.",
+        next: Some(8),
+    },
+    DialogueNode::Line {
+        text: "Maybe later. Raw instinct is a valid learning strategy.",
+        next: None,
+    },
+    DialogueNode::Line {
+        text: "After that, visit the tavern to read the newspaper and hear what the locals say.",
+        next: None,
+    },
+];
+
 const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
     EntityDialogueSpec {
         identifier: "Bartender",
-        start: 0,
-        nodes: BARTENDER_DIALOGUE,
-        interact_radius: INTERACT_RADIUS,
-        interact_offset: Vec2::ZERO,
-        on_complete_scene: None,
-    },
-    EntityDialogueSpec {
-        identifier: "Bear",
         start: 0,
         nodes: BARTENDER_DIALOGUE,
         interact_radius: INTERACT_RADIUS,
@@ -314,7 +420,7 @@ const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
         on_complete_scene: None,
     },
     EntityDialogueSpec {
-        identifier: "Bank_teller",
+        identifier: "Bear",
         start: 0,
         nodes: TELLER_DIALOGUE,
         interact_radius: INTERACT_RADIUS,
@@ -385,9 +491,27 @@ const ENTITY_DIALOGUE_SPECS: &[EntityDialogueSpec] = &[
         nodes: PRINTER_DIALOGUE,
         interact_radius: INTERACT_RADIUS / 1.5,
         interact_offset: Vec2::ZERO,
-        on_complete_scene: None
-    }
+        on_complete_scene: None,
+    },
+    EntityDialogueSpec {
+        identifier: "Gremlin",
+        start: 0,
+        nodes: GREMLIN_TUTORIAL_DIALOGUE,
+        interact_radius: INTERACT_RADIUS,
+        interact_offset: Vec2::ZERO,
+        on_complete_scene: None,
+    },
 ];
+
+fn check_dialogue_spec_duplicates() {
+    let mut identifiers = HashSet::new();
+    for spec in ENTITY_DIALOGUE_SPECS {
+        if identifiers.contains(spec.identifier) {
+            panic!("Duplicate dialogue spec identifier: {}", spec.identifier);
+        }
+        identifiers.insert(spec.identifier);
+    }
+}
 
 fn find_spec_index(identifier: &str) -> Option<usize> {
     ENTITY_DIALOGUE_SPECS
@@ -404,12 +528,29 @@ fn node_text(node: DialogueNode) -> String {
 
 fn set_dialogue_text(ui: &mut DialogueUiState, text: String) {
     ui.visible = true;
-    ui.text = text;
+    ui.full_text = text;
+    ui.revealed_chars = 0;
+    ui.reveal_timer.reset();
 }
 
 fn clear_dialogue_text(ui: &mut DialogueUiState) {
     ui.visible = false;
-    ui.text.clear();
+    ui.full_text.clear();
+    ui.revealed_chars = 0;
+    ui.reveal_timer.reset();
+}
+
+fn animate_dialogue_text(time: Res<Time>, mut ui: ResMut<DialogueUiState>) {
+    if !ui.visible || ui.is_fully_revealed() {
+        return;
+    }
+
+    ui.reveal_timer.tick(time.delta());
+    let text_len = ui.full_text.chars().count();
+    let revealed_this_tick = ui.reveal_timer.times_finished_this_tick() as usize;
+    if revealed_this_tick > 0 {
+        ui.revealed_chars = (ui.revealed_chars + revealed_this_tick).min(text_len);
+    }
 }
 
 fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -473,15 +614,21 @@ fn apply_dialogue_ui_state(
     } else {
         Visibility::Hidden
     };
-    text.0 = ui.text.clone();
+    text.0 = ui.display_text();
 }
 
 fn attach_dialogue_prompts(
     mut commands: Commands,
-    query: Query<(Entity, &EntityInstance), (Added<EntityInstance>, Without<DialoguePromptAttached>)>,
+    query: Query<
+        (Entity, &EntityInstance),
+        (Added<EntityInstance>, Without<DialoguePromptAttached>),
+    >,
     has_query: Query<Entity, With<DialoguePromptAttached>>,
     dialogue_enabled: Res<DialogueEnabled>,
+    disabled_dialogues: Res<DisabledEntityDialogues>,
 ) {
+    check_dialogue_spec_duplicates();
+
     if !dialogue_enabled.enabled {
         for entity in has_query.iter() {
             commands
@@ -492,6 +639,9 @@ fn attach_dialogue_prompts(
     }
 
     for (entity, instance) in &query {
+        if disabled_dialogues.is_disabled(&instance.identifier) {
+            continue;
+        }
         if let Some(spec_idx) = find_spec_index(&instance.identifier) {
             let spec = ENTITY_DIALOGUE_SPECS[spec_idx];
             let half_extents = entity_half_extents(instance);
@@ -512,16 +662,17 @@ fn handle_entity_dialogue(
     keyboard: Res<ButtonInput<KeyCode>>,
     loaded_map: Res<LoadedMap>,
     textbox_mode: Res<TextboxMode>,
-    player_q: Query<&Transform, With<Player>>,
+    player_q: Query<&Transform, (With<Player>, With<LocalPlayer>)>,
     entities: Query<(Entity, &EntityInstance, &Transform)>,
     dialogue_enabled: Res<DialogueEnabled>,
+    disabled_dialogues: Res<DisabledEntityDialogues>,
     mut active: ResMut<ActiveDialogue>,
     mut lock: ResMut<PlayerMovementLock>,
     mut ui: ResMut<DialogueUiState>,
     mut scene_change: MessageWriter<SceneChangeRequest>,
 ) {
     if !dialogue_enabled.enabled {
-        return; 
+        return;
     }
 
     if let Some(source_map) = &active.hold_until_map_change_from {
@@ -549,12 +700,17 @@ fn handle_entity_dialogue(
             return;
         };
 
-        let should_advance = keyboard.just_pressed(KeyCode::Enter)
-            || keyboard.just_pressed(KeyCode::NumpadEnter);
+        let should_advance =
+            keyboard.just_pressed(KeyCode::Enter) || keyboard.just_pressed(KeyCode::NumpadEnter);
 
         match node {
             DialogueNode::Line { next, .. } => {
                 if should_advance {
+                    if !ui.is_fully_revealed() {
+                        ui.reveal_all();
+                        active.session = Some(session);
+                        return;
+                    }
                     if let Some(next_idx) = next {
                         session.node_idx = next_idx;
                         if let Some(next_node) = spec.nodes.get(session.node_idx).copied() {
@@ -586,10 +742,17 @@ fn handle_entity_dialogue(
                 }
             }
             DialogueNode::YesNo {
-                yes_next,
-                no_next,
-                ..
+                yes_next, no_next, ..
             } => {
+                if should_advance && !ui.is_fully_revealed() {
+                    ui.reveal_all();
+                    active.session = Some(session);
+                    return;
+                }
+                if !ui.is_fully_revealed() {
+                    active.session = Some(session);
+                    return;
+                }
                 let mut next_idx = None;
                 if keyboard.just_pressed(KeyCode::KeyY) {
                     next_idx = Some(yes_next);
@@ -615,13 +778,17 @@ fn handle_entity_dialogue(
         return;
     }
 
-    let pressed_enter = keyboard.just_pressed(KeyCode::Enter) || keyboard.just_pressed(KeyCode::NumpadEnter);
+    let pressed_enter =
+        keyboard.just_pressed(KeyCode::Enter) || keyboard.just_pressed(KeyCode::NumpadEnter);
     if !pressed_enter {
         return;
     }
 
     let mut best: Option<(Entity, usize, f32)> = None;
     for (entity, instance, tf) in &entities {
+        if disabled_dialogues.is_disabled(&instance.identifier) {
+            continue;
+        }
         let Some(spec_idx) = find_spec_index(&instance.identifier) else {
             continue;
         };
@@ -662,11 +829,7 @@ fn entity_half_extents(instance: &EntityInstance) -> Vec2 {
     )
 }
 
-fn distance_to_entity_interact_bounds(
-    point: Vec2,
-    center: Vec2,
-    instance: &EntityInstance,
-) -> f32 {
+fn distance_to_entity_interact_bounds(point: Vec2, center: Vec2, instance: &EntityInstance) -> f32 {
     let half_extents = entity_half_extents(instance);
     let dx = (point.x - center.x).abs() - half_extents.x;
     let dy = (point.y - center.y).abs() - half_extents.y;

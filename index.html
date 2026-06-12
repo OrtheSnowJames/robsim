@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Robsim</title>
+    <link data-trunk rel="rust" data-bin="robsim" />
+    <link data-trunk rel="copy-dir" href="assets" />
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #0f1110;
+            --panel: #171a18;
+            --panel-2: #1f2421;
+            --text: #e7dfcb;
+            --muted: #a7a08e;
+            --accent: #d2b06b;
+            --border: rgba(231, 223, 203, 0.12);
+            --shadow: rgba(0, 0, 0, 0.38);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            min-height: 100%;
+        }
+
+        body {
+            font-family: Georgia, "Times New Roman", serif;
+            background:
+                radial-gradient(circle at top, rgba(210, 176, 107, 0.08), transparent 32%),
+                linear-gradient(180deg, #121513 0%, var(--bg) 100%);
+            color: var(--text);
+        }
+
+        .page {
+            min-height: 100vh;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 20px;
+            padding: 24px;
+        }
+
+        .topbar,
+        .footer {
+            max-width: 1080px;
+            width: 100%;
+            margin: 0 auto;
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+            color: var(--muted);
+        }
+
+        .brand {
+            margin: 0;
+            font-size: clamp(1.5rem, 3vw, 2.4rem);
+            line-height: 1;
+            letter-spacing: 0.04em;
+            color: var(--text);
+        }
+
+        .tagline,
+        .footer {
+            font-size: 0.95rem;
+        }
+
+        .stage {
+            max-width: 1080px;
+            width: 100%;
+            margin: 0 auto;
+            background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            box-shadow:
+                0 20px 60px var(--shadow),
+                inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            padding: 18px;
+        }
+
+        .stage-inner {
+            border: 1px solid rgba(210, 176, 107, 0.16);
+            border-radius: 12px;
+            padding: 12px;
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+                #121413;
+            min-height: min(70vh, 720px);
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            max-width: 100%;
+            margin: 0 auto;
+            border-radius: 8px;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background: #0a0b0a;
+        }
+
+        .loading {
+            position: absolute;
+            inset: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.18)),
+                #101211;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .loading.is-hidden {
+            display: none;
+        }
+
+        .loading-card {
+            max-width: 320px;
+        }
+
+        .loading-title {
+            margin: 0 0 8px;
+            font-size: 1.1rem;
+            color: var(--text);
+        }
+
+        .loading-copy {
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .footer {
+            padding-bottom: 4px;
+        }
+
+        .hint {
+            opacity: 0.9;
+        }
+
+        .exit-overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(8, 10, 9, 0.82);
+            backdrop-filter: blur(8px);
+            z-index: 20;
+        }
+
+        .exit-overlay.is-visible {
+            display: flex;
+        }
+
+        .exit-card {
+            width: min(560px, 100%);
+            padding: 28px;
+            border-radius: 20px;
+            border: 1px solid rgba(210, 176, 107, 0.22);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+                #141816;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+        }
+
+        .exit-kicker {
+            margin: 0 0 10px;
+            font-size: 0.85rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+
+        .exit-title {
+            margin: 0 0 12px;
+            font-size: clamp(2rem, 5vw, 3rem);
+            line-height: 0.95;
+        }
+
+        .exit-copy {
+            margin: 0 0 22px;
+            color: var(--muted);
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .exit-button {
+            appearance: none;
+            border: 1px solid rgba(210, 176, 107, 0.35);
+            border-radius: 999px;
+            background: linear-gradient(180deg, #2c312d 0%, #202521 100%);
+            color: var(--text);
+            padding: 12px 18px;
+            font: inherit;
+            cursor: pointer;
+            transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+        }
+
+        .exit-button:hover {
+            transform: translateY(-1px);
+            border-color: rgba(210, 176, 107, 0.6);
+            background: linear-gradient(180deg, #353b36 0%, #252a26 100%);
+        }
+
+        .exit-button:active {
+            transform: translateY(0);
+        }
+
+        @media (max-width: 720px) {
+            .page {
+                padding: 16px;
+                gap: 16px;
+            }
+
+            .topbar,
+            .footer {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .stage {
+                padding: 12px;
+                border-radius: 14px;
+            }
+        }
+    </style>
+    <script>
+        window.addEventListener("DOMContentLoaded", () => {
+            const mount = document.querySelector(".stage-inner");
+            const stage = document.querySelector(".stage");
+            const overlay = document.getElementById("exit-overlay");
+            const overlayCopy = document.getElementById("exit-copy");
+            const restartButton = document.getElementById("restart-button");
+            const loading = document.getElementById("loading");
+            if (!mount) return;
+
+            const placeCanvas = () => {
+                const canvas = document.querySelector("body > canvas");
+                if (canvas && canvas.parentElement !== mount) {
+                    mount.appendChild(canvas);
+                }
+                if (canvas) {
+                    loading?.classList.add("is-hidden");
+                }
+            };
+
+            placeCanvas();
+
+            const observer = new MutationObserver(placeCanvas);
+            observer.observe(document.body, { childList: true });
+
+            window.showRobsimExitOverlay = (message) => {
+                placeCanvas();
+                if (stage) {
+                    stage.style.display = "none";
+                }
+                if (overlayCopy && message) {
+                    overlayCopy.textContent = message;
+                }
+                overlay?.classList.add("is-visible");
+            };
+
+            restartButton?.addEventListener("click", () => {
+                window.location.reload();
+            });
+        });
+    </script>
+</head>
+<body>
+    <main class="page">
+        <header class="topbar">
+            <div>
+                <h1 class="brand">Robsim</h1>
+                <div class="tagline">Petty crime, institutional failure, and avoidable panic.</div>
+            </div>
+            <div class="hint">Best played wide enough to respect the bad decisions.</div>
+        </header>
+        <section class="stage">
+            <div class="stage-inner">
+                <div class="loading" id="loading">
+                    <div class="loading-card">
+                        <p class="loading-title">Loading Robsim</p>
+                        <p class="loading-copy">The town is assembling its failures. One moment.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <footer class="footer">
+            <div>Blue Moon remains open, against all advice.</div>
+            <div>WASM build</div>
+        </footer>
+    </main>
+    <div class="exit-overlay" id="exit-overlay" aria-live="polite">
+        <div class="exit-card">
+            <p class="exit-kicker">Clean Exit</p>
+            <h2 class="exit-title">You made it out.</h2>
+            <p class="exit-copy" id="exit-copy">Blue Moon absorbs another lesson with no visible growth.</p>
+            <button class="exit-button" id="restart-button" type="button">Open the town again</button>
+        </div>
+    </div>
+</body>
+</html>

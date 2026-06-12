@@ -3,11 +3,12 @@ use bevy::{
     prelude::*,
     render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages},
 };
+use std::collections::{HashMap, HashSet};
 
-use crate::bank::guard::MazeGuard;
-use crate::bank::render::maze::{world_to_grid_cell, MazeRenderState};
 use crate::bank::GridType;
-use crate::player::Player;
+use crate::bank::guard::MazeGuard;
+use crate::bank::render::maze::{MazeRenderState, world_to_grid_cell};
+use crate::player::{LocalPlayer, Player, PlayerIdentity};
 
 const RADAR_DIAMETER_TILES: i32 = 21;
 const RADAR_TILE_PIXELS: i32 = 4;
@@ -21,6 +22,8 @@ const RADAR_ENTRANCE_ALPHA: u8 = 180;
 const RADAR_EXIT_ALPHA: u8 = 230;
 const RADAR_GUARD_ALPHA: u8 = 185;
 const RADAR_PLAYER_ALPHA: u8 = 255;
+const RADAR_OTHER_PLAYER_COLOR: (u8, u8, u8) = (90, 170, 255);
+const RADAR_HOST_COLOR: (u8, u8, u8) = (255, 194, 46);
 
 pub struct RadarPlugin;
 
@@ -76,43 +79,54 @@ fn init_radar_ui(mut commands: Commands, mut images: ResMut<Assets<Image>>, grid
     image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
 
     let handle = images.add(image);
-    commands.insert_resource(RadarCanvas { handle: handle.clone(), width, height });
+    commands.insert_resource(RadarCanvas {
+        handle: handle.clone(),
+        width,
+        height,
+    });
 
     // Spawn HUD layout anchoring the radar screen cleanly in the top-right corner
-    commands.spawn(Node {
-        position_type: PositionType::Absolute,
-        top: Val::Px(20.0),
-        right: Val::Px(20.0),
-        padding: UiRect::all(Val::Px(6.0)),
-        border: UiRect::all(Val::Px(1.0)),
-        ..default()
-    })
-    .insert(BorderColor::all(Color::srgba(0.35, 1.0, 0.35, 0.55)))
-    .insert(BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)))
-    .insert(RadarNode)
-    .insert(Visibility::Hidden)
-    .with_children(|parent| {
-        parent.spawn((
-            Node {
-                width: Val::Px(width as f32),
-                height: Val::Px(height as f32),
-                ..default()
-            },
-            ImageNode::new(handle),
-        ));
-    });
+    commands
+        .spawn(Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(20.0),
+            right: Val::Px(20.0),
+            padding: UiRect::all(Val::Px(6.0)),
+            border: UiRect::all(Val::Px(1.0)),
+            ..default()
+        })
+        .insert(BorderColor::all(Color::srgba(0.35, 1.0, 0.35, 0.55)))
+        .insert(BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)))
+        .insert(RadarNode)
+        .insert(Visibility::Hidden)
+        .with_children(|parent| {
+            parent.spawn((
+                Node {
+                    width: Val::Px(width as f32),
+                    height: Val::Px(height as f32),
+                    ..default()
+                },
+                ImageNode::new(handle),
+            ));
+        });
 }
 
 fn update_radar_canvas(
-    mut grid: ResMut<GameGrid>,
+    grid: Res<GameGrid>,
     radar: Res<RadarCanvas>,
     maze_state: Option<Res<MazeRenderState>>,
-    player_query: Query<&Transform, With<Player>>,
+    local_player_query: Query<&Transform, (With<Player>, With<LocalPlayer>)>,
+    player_query: Query<
+        (&Transform, Option<&PlayerIdentity>, Option<&Visibility>),
+        (With<Player>, Without<RadarNode>),
+    >,
     guard_query: Query<&Transform, With<MazeGuard>>,
     mut radar_ui_visibility: Query<&mut Visibility, With<RadarNode>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let Some(image) = images.get_mut(&radar.handle) else { return };
+    let Some(image) = images.get_mut(&radar.handle) else {
+        return;
+    };
     let canvas_w = radar.width as i32;
     let canvas_h = radar.height as i32;
 
@@ -138,7 +152,7 @@ fn update_radar_canvas(
         px[3] = RADAR_BG_ALPHA;
     }
 
-    let (Some(maze_state), Ok(player_tf)) = (maze_state, player_query.single()) else {
+    let (Some(maze_state), Ok(player_tf)) = (maze_state, local_player_query.single()) else {
         set_ui_visible(false);
         return;
     };
@@ -148,9 +162,8 @@ fn update_radar_canvas(
         return;
     }
 
-    grid.tiles = maze_state.grid.clone();
-    let map_h = grid.tiles.len();
-    let map_w = grid.tiles[0].len();
+    let map_h = maze_state.grid.len();
+    let map_w = maze_state.grid[0].len();
 
     let Some(player_cell) = world_to_grid_cell(
         map_w,
@@ -161,7 +174,7 @@ fn update_radar_canvas(
         return;
     };
 
-    let mut guard_cells = std::collections::HashSet::new();
+    let mut guard_cells = HashSet::new();
     for guard_tf in &guard_query {
         if let Some(cell) = world_to_grid_cell(
             map_w,
@@ -170,6 +183,37 @@ fn update_radar_canvas(
             guard_tf.translation.truncate(),
         ) {
             guard_cells.insert(cell);
+        }
+    }
+
+    let mut player_cells: HashMap<IVec2, ((u8, u8, u8), u8)> = HashMap::new();
+    for (player_tf, identity, visibility) in &player_query {
+        if matches!(visibility, Some(Visibility::Hidden)) {
+            continue;
+        }
+        let Some(cell) = world_to_grid_cell(
+            map_w,
+            map_h,
+            maze_state.world_center,
+            player_tf.translation.truncate(),
+        ) else {
+            continue;
+        };
+        let is_host = identity.map(|identity| identity.is_host).unwrap_or(false);
+        let is_local = cell == player_cell;
+        let (color, priority) = if is_host {
+            (RADAR_HOST_COLOR, 3)
+        } else if is_local {
+            ((RADAR_GREEN_R, RADAR_GREEN_G, RADAR_GREEN_B), 2)
+        } else {
+            (RADAR_OTHER_PLAYER_COLOR, 1)
+        };
+        let should_replace = player_cells
+            .get(&cell)
+            .map(|(_, existing_priority)| priority > *existing_priority)
+            .unwrap_or(true);
+        if should_replace {
+            player_cells.insert(cell, (color, priority));
         }
     }
 
@@ -219,7 +263,7 @@ fn update_radar_canvas(
                 continue;
             }
 
-            let tile = grid.tiles[map_y as usize][map_x as usize];
+            let tile = maze_state.grid[map_y as usize][map_x as usize];
             let mut alpha = 0_u8;
             let mut color = (RADAR_GREEN_R, RADAR_GREEN_G, RADAR_GREEN_B);
             if tile == GridType::WALL as u8 {
@@ -244,9 +288,9 @@ fn update_radar_canvas(
                 alpha = alpha.max(RADAR_GUARD_ALPHA);
                 color = (RADAR_GREEN_R, RADAR_GREEN_G, RADAR_GREEN_B);
             }
-            if map_x == player_cell.x && map_y == player_cell.y {
+            if let Some((player_color, _)) = player_cells.get(&IVec2::new(map_x, map_y)) {
                 alpha = RADAR_PLAYER_ALPHA;
-                color = (RADAR_GREEN_R, RADAR_GREEN_G, RADAR_GREEN_B);
+                color = *player_color;
             }
             if alpha == 0 {
                 continue;

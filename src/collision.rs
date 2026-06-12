@@ -113,10 +113,7 @@ pub fn can_move(
     movement
 }
 
-pub fn display_boxes(
-    box_q: Query<(&Transform, &BoundingBox)>,
-    mut gizmos: Gizmos,
-) {
+pub fn display_boxes(box_q: Query<(&Transform, &BoundingBox)>, mut gizmos: Gizmos) {
     for _box in box_q {
         gizmos.rect_2d(
             Isometry2d::from_translation(_box.0.translation.truncate()),

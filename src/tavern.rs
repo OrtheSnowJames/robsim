@@ -1,72 +1,29 @@
-use serde_json::Value;
-use rand::RngExt;
-use bevy::prelude::*;
-use bevy::text::{FontWeight, Justify};
 use crate::bank::img_layer::BankIcon;
-use crate::enter_interact::EnterInteractCallbackEvent;
-use crate::entity_dialogue::PlayerMovementLock;
-use crate::map::{loaded_map_path, LdtkEntityByNameQuery, LoadedMap};
-use crate::player::Player;
-use crate::receipts::{format_receipt_text, Receipt, ReceiptCache};
+use crate::display_ui::{DisplayUiPlugin, DisplayUiState};
+use crate::map::{LdtkEntityByNameQuery, LoadedMap, loaded_map_path};
+use crate::random::{random_bool, random_range_i32};
+use crate::receipts::{Receipt, ReceiptCache};
 use crate::text_bubble::TextBubble;
-use crate::hex_color;
+use bevy::prelude::*;
+use serde_json::Value;
 
 const TAVERN_MAP_PATH: &str = "maps/tavern.ldtk";
-const NEWSPAPER_OFFICE_MAP_PATH: &str = "maps/newspaper.ldtk";
 const BANK_SIGN_TRIGGER_LINE: &str = "A slightly larger sign saying 'Please Don't Rob Us.'";
 const FORCE_PLEASE_DONT_ROB_US_SIGN: bool = false;
 const CONDITIONAL_POOL_PICK_CHANCE: f64 = 0.5;
-const RECEIPT_PANEL_WIDTH: f32 = 38.0;
-const DEFAULT_PANEL_WIDTH: f32 = 82.0;
-const PANEL_HEIGHT: f32 = 84.0;
+const CONDITIONAL_DIALOGUE_PICK_CHANCE: f64 = 0.85;
 
 pub struct TavernPlugin;
 
 impl Plugin for TavernPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<HeistReportMessage>()
-            .add_message::<NewspaperUiMessage>()
+        app.add_plugins(DisplayUiPlugin)
+            .add_message::<HeistReportMessage>()
             .init_resource::<LastHeistReport>()
             .init_resource::<TavernBubbleState>()
             .init_resource::<CachedTavernTalk>()
-            .init_resource::<NewspaperUiState>()
-            .add_systems(Startup, setup_newspaper_ui)
-            .add_systems(
-                Update,
-                (
-                    record_heist_report,
-                    load_tavern_talk_from_json,
-                    handle_newspaper_ui_messages,
-                    handle_newspaper_entity_interact,
-                    toggle_newspaper_ui,
-                    apply_newspaper_ui_state,
-                ),
-            );
+            .add_systems(Update, (record_heist_report, load_tavern_talk_from_json));
     }
-}
-
-#[derive(Message, Clone)]
-pub struct NewspaperUiMessage {
-    pub article: String,
-    pub open: bool,
-}
-
-pub fn show_newspaper_ui(writer: &mut MessageWriter<NewspaperUiMessage>, article: impl Into<String>) {
-    writer.write(NewspaperUiMessage {
-        article: article.into(),
-        open: true,
-    });
-}
-
-pub fn set_newspaper_ui(
-    writer: &mut MessageWriter<NewspaperUiMessage>,
-    article: impl Into<String>,
-    open: bool,
-) {
-    writer.write(NewspaperUiMessage {
-        article: article.into(),
-        open,
-    });
 }
 
 #[derive(Message, Clone, Copy)]
@@ -91,25 +48,6 @@ struct TavernBubbleState {
 #[derive(Resource, Default)]
 struct CachedTavernTalk(Option<TavernTalk>);
 
-#[derive(Resource, Default)]
-struct NewspaperUiState {
-    open: bool,
-    article: String,
-    receipt_index: Option<usize>,
-}
-
-#[derive(Component)]
-struct NewspaperOverlayRoot;
-
-#[derive(Component)]
-struct NewspaperHeadlineText;
-
-#[derive(Component)]
-struct NewspaperBodyText;
-
-#[derive(Component)]
-struct NewspaperPaperPanel;
-
 pub struct TavernDialogue {
     pub guy1: String,
     pub guy2: String,
@@ -122,8 +60,7 @@ pub struct TavernTalk {
 }
 
 fn random_number(range: std::ops::Range<i32>) -> i32 {
-    let mut rng = rand::rng();
-    rng.random_range(range)
+    random_range_i32(range)
 }
 
 impl TavernTalk {
@@ -144,7 +81,7 @@ impl TavernTalk {
             receipt.time_till_death_secs,
             receipt.heist_duration_secs,
         );
-        let prefer_conditional = rand::rng().random_bool(CONDITIONAL_POOL_PICK_CHANCE);
+        let prefer_conditional = random_bool(CONDITIONAL_POOL_PICK_CHANCE);
         let base_newspaper_pool = collect_newspaper_pool(&first);
         let conditional_newspaper_pool = conditional_bucket
             .as_ref()
@@ -162,14 +99,12 @@ impl TavernTalk {
             newspaper_pool[idx].clone()
         };
 
-        // Dialogue pool order:
-        // 1) unconditional
-        // 2) successful/unsuccessful generic dialogue
-        // 3) conditional dialogue
-        // 4) random pick from final pool
-        let mut dialogue_pool = collect_unconditional_dialogue_pool(&first, &json_val);
-        dialogue_pool.extend(collect_dialogue_pool(&first));
-        dialogue_pool.extend(collect_matching_conditional_dialogue_pool(
+        let base_dialogue_pool = {
+            let mut pool = collect_unconditional_dialogue_pool(&first, &json_val);
+            pool.extend(collect_dialogue_pool(&first));
+            pool
+        };
+        let conditional_dialogue_pool = collect_matching_conditional_dialogue_pool(
             &first,
             receipt.money,
             receipt.profit,
@@ -177,7 +112,13 @@ impl TavernTalk {
             receipt.stopped_at_shaft,
             receipt.time_till_death_secs,
             receipt.heist_duration_secs,
-        ));
+        );
+        let prefer_conditional_dialogue = random_bool(CONDITIONAL_DIALOGUE_PICK_CHANCE);
+        let dialogue_pool = choose_pool(
+            base_dialogue_pool,
+            conditional_dialogue_pool,
+            prefer_conditional_dialogue,
+        );
         let chosen_dialogue = if dialogue_pool.is_empty() {
             Value::Null
         } else {
@@ -193,7 +134,10 @@ impl TavernTalk {
             bartender: pick_dialogue_line(&chosen_dialogue, &["3", "bartender"]),
         };
 
-        Self { newspaper, dialogue }
+        Self {
+            newspaper,
+            dialogue,
+        }
     }
 
     pub fn from_intro_lines_object(json_val: Value) -> Option<Self> {
@@ -440,7 +384,9 @@ fn pick_dialogue_line(dialogue_node: &Value, keys: &[&str]) -> String {
             break;
         }
     }
-    let Some(value) = value_opt else { return String::new(); };
+    let Some(value) = value_opt else {
+        return String::new();
+    };
 
     if let Some(single) = value.as_str() {
         return single.to_string();
@@ -483,10 +429,7 @@ fn record_heist_report(
             receipt.lines_object()
         };
         if let Some(lines_object) = lines_object {
-            cached.0 = Some(TavernTalk::from_lines_object(
-                lines_object,
-                receipt,
-            ));
+            cached.0 = Some(TavernTalk::from_lines_object(lines_object, receipt));
         } else {
             cached.0 = None;
         }
@@ -497,7 +440,7 @@ fn record_heist_report(
 fn load_tavern_talk_from_json(
     loaded_map: Res<LoadedMap>,
     mut state: ResMut<TavernBubbleState>,
-    mut newspaper_ui: ResMut<NewspaperUiState>,
+    mut display_ui: ResMut<DisplayUiState>,
     report: Res<LastHeistReport>,
     mut cached: ResMut<CachedTavernTalk>,
     mut receipt_cache: Option<ResMut<ReceiptCache>>,
@@ -525,7 +468,7 @@ fn load_tavern_talk_from_json(
         return;
     };
 
-    newspaper_ui.article = talk.newspaper.clone();
+    display_ui.set_article_content(talk.newspaper.clone());
     let guy1_line = if talk.dialogue.guy1.trim().is_empty() {
         "..."
     } else {
@@ -552,6 +495,11 @@ fn load_tavern_talk_from_json(
     };
 
     let mut applied_any = false;
+
+    // NOTE:
+    // Bar_guy_1 and Bar_guy_2 are reversed.
+    // Do not "fix" this.
+    // The town has adapted.
 
     if let Some((entity, _, _)) = ldtk_entities.first_named("Bar_guy_2") {
         commands.entity(entity).insert(TextBubble {
@@ -586,262 +534,4 @@ fn load_tavern_talk_from_json(
 
     // Only mark done if at least one target entity existed; otherwise retry next frame.
     state.applied = applied_any;
-}
-
-fn handle_newspaper_ui_messages(
-    mut messages: MessageReader<NewspaperUiMessage>,
-    mut ui: ResMut<NewspaperUiState>,
-    mut lock: ResMut<PlayerMovementLock>,
-) {
-    for msg in messages.read() {
-        ui.article = msg.article.clone();
-        ui.open = msg.open;
-        ui.receipt_index = None;
-        lock.active = msg.open;
-    }
-}
-
-fn setup_newspaper_ui(mut commands: Commands) {
-    commands
-        .spawn((
-            NewspaperOverlayRoot,
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(0.0),
-                right: Val::Px(0.0),
-                top: Val::Px(0.0),
-                bottom: Val::Px(0.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.72)),
-            Visibility::Hidden,
-            ZIndex(20_000),
-        ))
-        .with_children(|parent| {
-            parent
-                .spawn((
-                    Node {
-                        width: Val::Percent(DEFAULT_PANEL_WIDTH),
-                        height: Val::Percent(PANEL_HEIGHT),
-                        flex_direction: FlexDirection::Column,
-                        border: UiRect::all(Val::Px(3.0)),
-                        padding: UiRect::all(Val::Px(16.0)),
-                        row_gap: Val::Px(10.0),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgb(0.96, 0.94, 0.88)),
-                    BorderColor::all(hex_color!(0x9c7474)),
-                    NewspaperPaperPanel,
-                ))
-                .with_children(|paper| {
-                    paper.spawn((
-                        NewspaperHeadlineText,
-                        Text::new(""),
-                        TextFont {
-                            font_size: 34.0,
-                            weight: FontWeight::BOLD,
-                            ..default()
-                        },
-                        TextLayout::new_with_justify(Justify::Center),
-                        TextColor(Color::BLACK),
-                    ));
-                    paper.spawn((
-                        NewspaperBodyText,
-                        Text::new(""),
-                        TextFont {
-                            font_size: 24.0,
-                            ..default()
-                        },
-                        TextLayout::new_with_justify(Justify::Left),
-                        TextColor(Color::BLACK),
-                    ));
-                });
-        });
-}
-
-fn split_headline_and_body(article: &str) -> (String, String) {
-    let lines: Vec<&str> = article.lines().collect();
-    if lines.is_empty() {
-        return ("".to_string(), "".to_string());
-    }
-    let first = lines.first().copied().unwrap_or_default();
-    let second = lines.get(1).copied().unwrap_or_default();
-    let headline = if second.is_empty() {
-        first.to_string()
-    } else {
-        format!("{first}\n{second}")
-    };
-    let body = if lines.len() > 2 {
-        lines[2..].join("\n")
-    } else {
-        "".to_string()
-    };
-    (headline, body)
-}
-
-fn toggle_newspaper_ui(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    loaded_map: Res<LoadedMap>,
-    _player_q: Query<&Transform, With<Player>>,
-    _ldtk_entities: LdtkEntityByNameQuery,
-    mut ui: ResMut<NewspaperUiState>,
-    receipt_cache: Option<Res<ReceiptCache>>,
-    mut lock: ResMut<PlayerMovementLock>,
-) {
-    let pressed_close = (ui.open && keyboard.just_pressed(KeyCode::Escape))
-        || (!ui.open && (keyboard.just_pressed(KeyCode::Enter) || keyboard.just_pressed(KeyCode::NumpadEnter)));
-
-    if keyboard.just_pressed(KeyCode::KeyR) {
-        let latest_idx = receipt_cache
-            .as_deref()
-            .and_then(|cache| cache.all().len().checked_sub(1));
-        if let Some(idx) = latest_idx {
-            if let Some(cache) = receipt_cache.as_deref() {
-                if let Some(entry) = cache.all().get(idx) {
-                    ui.article = format_receipt_text(&entry.receipt);
-                    ui.receipt_index = Some(idx);
-                    ui.open = true;
-                    lock.active = true;
-                }
-            }
-        }
-        return;
-    }
-
-    if ui.open && pressed_close {
-        ui.open = false;
-        ui.receipt_index = None;
-        lock.active = false;
-        return;
-    }
-
-    if ui.open {
-        if let Some(current_idx) = ui.receipt_index {
-            if let Some(cache) = receipt_cache.as_deref() {
-                let len = cache.all().len();
-                if len > 0 && keyboard.just_pressed(KeyCode::ArrowLeft) {
-                    let next = current_idx.saturating_sub(1);
-                    if let Some(entry) = cache.all().get(next) {
-                        ui.receipt_index = Some(next);
-                        ui.article = format_receipt_text(&entry.receipt);
-                    }
-                    return;
-                }
-                if len > 0 && keyboard.just_pressed(KeyCode::ArrowRight) {
-                    let next = (current_idx + 1).min(len.saturating_sub(1));
-                    if let Some(entry) = cache.all().get(next) {
-                        ui.receipt_index = Some(next);
-                        ui.article = format_receipt_text(&entry.receipt);
-                    }
-                    return;
-                }
-            }
-        }
-    }
-
-    let in_tavern = loaded_map_path(&loaded_map) == TAVERN_MAP_PATH;
-    let in_allowed_premises = loaded_map_path(&loaded_map) == NEWSPAPER_OFFICE_MAP_PATH || in_tavern;
-    if !in_allowed_premises {
-        // Keep receipt mode usable outside the tavern/newspaper office.
-        if ui.open && ui.receipt_index.is_none() {
-            ui.open = false;
-            ui.receipt_index = None;
-            lock.active = false;
-        }
-        return;
-    }
-
-    let _ = lock;
-}
-
-fn handle_newspaper_entity_interact(
-    mut events: MessageReader<EnterInteractCallbackEvent>,
-    mut ui: ResMut<NewspaperUiState>,
-    receipt_cache: Option<Res<ReceiptCache>>,
-    mut lock: ResMut<PlayerMovementLock>,
-) {
-    for ev in events.read() {
-        match *ev {
-            EnterInteractCallbackEvent::OpenNewspaper(entity) => {
-                let _ = entity;
-                if ui.article.trim().is_empty() {
-                    continue;
-                }
-                if ui.open && ui.receipt_index.is_none() {
-                    ui.open = false;
-                    lock.active = false;
-                } else {
-                    ui.open = true;
-                    ui.receipt_index = None;
-                    lock.active = true;
-                }
-            }
-            EnterInteractCallbackEvent::OpenReceipts(entity) => {
-                let _ = entity;
-                let latest_idx = receipt_cache
-                    .as_deref()
-                    .and_then(|cache| cache.all().len().checked_sub(1));
-                let Some(idx) = latest_idx else {
-                    continue;
-                };
-                let Some(cache) = receipt_cache.as_deref() else {
-                    continue;
-                };
-                let Some(entry) = cache.all().get(idx) else {
-                    continue;
-                };
-                ui.article = format_receipt_text(&entry.receipt);
-                ui.receipt_index = Some(idx);
-                ui.open = true;
-                lock.active = true;
-            }
-        }
-    }
-}
-
-fn apply_newspaper_ui_state(
-    ui: Res<NewspaperUiState>,
-    mut lock: ResMut<PlayerMovementLock>,
-    mut root_q: Query<&mut Visibility, With<NewspaperOverlayRoot>>,
-    mut panel_q: Query<&mut Node, With<NewspaperPaperPanel>>,
-    mut text_qs: ParamSet<(
-        Query<&mut Text, With<NewspaperHeadlineText>>,
-        Query<&mut Text, With<NewspaperBodyText>>,
-    )>,
-) {
-    let Ok(mut vis) = root_q.single_mut() else {
-        return;
-    };
-
-    if ui.open {
-        if let Ok(mut panel) = panel_q.single_mut() {
-            panel.width = if ui.receipt_index.is_some() {
-                Val::Percent(RECEIPT_PANEL_WIDTH)
-            } else {
-                Val::Percent(DEFAULT_PANEL_WIDTH)
-            };
-            panel.height = Val::Percent(PANEL_HEIGHT);
-        }
-        let (headline, body) = split_headline_and_body(&ui.article);
-        {
-            let mut headline_q = text_qs.p0();
-            let Ok(mut headline_text) = headline_q.single_mut() else {
-                return;
-            };
-            headline_text.0 = headline;
-        }
-        {
-            let mut body_q = text_qs.p1();
-            let Ok(mut body_text) = body_q.single_mut() else {
-                return;
-            };
-            body_text.0 = body;
-        }
-        *vis = Visibility::Visible;
-        lock.active = true;
-    } else {
-        *vis = Visibility::Hidden;
-    }
 }

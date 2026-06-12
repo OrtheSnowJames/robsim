@@ -162,7 +162,10 @@ impl SpriteSheetConfig {
     pub fn validate(&self) {
         assert!(self.atlas_columns > 0, "atlas_columns must be > 0");
         assert!(self.atlas_rows > 0, "atlas_rows must be > 0");
-        assert!(self.tile_size.x > 0 && self.tile_size.y > 0, "tile_size must be > 0");
+        assert!(
+            self.tile_size.x > 0 && self.tile_size.y > 0,
+            "tile_size must be > 0"
+        );
         match self.mapping {
             SpriteSheetMapping::DirectionByColumn {
                 facing_columns,
@@ -172,15 +175,30 @@ impl SpriteSheetConfig {
             } => {
                 assert!(walk_frames > 0, "walk_frames must be > 0");
                 assert!(idle_row < self.atlas_rows, "idle_row out of bounds");
-                assert!(walk_start_row < self.atlas_rows, "walk_start_row out of bounds");
+                assert!(
+                    walk_start_row < self.atlas_rows,
+                    "walk_start_row out of bounds"
+                );
                 assert!(
                     walk_start_row + walk_frames - 1 < self.atlas_rows,
                     "walk rows out of bounds"
                 );
-                assert!(facing_columns.down < self.atlas_columns, "down column out of bounds");
-                assert!(facing_columns.up < self.atlas_columns, "up column out of bounds");
-                assert!(facing_columns.left < self.atlas_columns, "left column out of bounds");
-                assert!(facing_columns.right < self.atlas_columns, "right column out of bounds");
+                assert!(
+                    facing_columns.down < self.atlas_columns,
+                    "down column out of bounds"
+                );
+                assert!(
+                    facing_columns.up < self.atlas_columns,
+                    "up column out of bounds"
+                );
+                assert!(
+                    facing_columns.left < self.atlas_columns,
+                    "left column out of bounds"
+                );
+                assert!(
+                    facing_columns.right < self.atlas_columns,
+                    "right column out of bounds"
+                );
             }
             SpriteSheetMapping::DirectionByRow {
                 facing_rows,
@@ -190,7 +208,10 @@ impl SpriteSheetConfig {
             } => {
                 assert!(walk_frames > 0, "walk_frames must be > 0");
                 assert!(idle_col < self.atlas_columns, "idle_col out of bounds");
-                assert!(walk_start_col < self.atlas_columns, "walk_start_col out of bounds");
+                assert!(
+                    walk_start_col < self.atlas_columns,
+                    "walk_start_col out of bounds"
+                );
                 assert!(
                     walk_start_col + walk_frames - 1 < self.atlas_columns,
                     "walk cols out of bounds"
@@ -198,7 +219,10 @@ impl SpriteSheetConfig {
                 assert!(facing_rows.down < self.atlas_rows, "down row out of bounds");
                 assert!(facing_rows.up < self.atlas_rows, "up row out of bounds");
                 assert!(facing_rows.left < self.atlas_rows, "left row out of bounds");
-                assert!(facing_rows.right < self.atlas_rows, "right row out of bounds");
+                assert!(
+                    facing_rows.right < self.atlas_rows,
+                    "right row out of bounds"
+                );
             }
         }
     }
@@ -307,7 +331,11 @@ pub fn tick_animator(animator: &mut SpriteSheetAnimator, delta: f32, walk_frames
         return;
     }
 
-    if animator.timer.tick(std::time::Duration::from_secs_f32(delta)).just_finished() {
+    if animator
+        .timer
+        .tick(std::time::Duration::from_secs_f32(delta))
+        .just_finished()
+    {
         animator.walk_frame = (animator.walk_frame + 1) % walk_frames.max(1);
     }
 }

@@ -1,7 +1,8 @@
+use crate::bank::img_layer::LockGlobalZ;
 use crate::bank::render::maze::MazeTile;
 use crate::collision::BoundingBox;
 use crate::entity_dialogue::PlayerMovementLock;
-use crate::bank::img_layer::LockGlobalZ;
+use crate::map::scene::MainCamera;
 use crate::sprite_sheet::{
     Facing, SpriteSheetAnimator, SpriteSheetConfig, apply_animator_to_sprite,
     facing_and_movement_from_input, make_sprite_with_animator, tick_animator,
@@ -70,6 +71,18 @@ fn collides_with_walls(
 pub struct Player;
 
 #[derive(Component)]
+pub struct LocalPlayer;
+
+#[derive(Component)]
+pub struct RemotePlayer;
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PlayerIdentity {
+    pub id: u64,
+    pub is_host: bool,
+}
+
+#[derive(Component)]
 pub struct PlayerAnimState {
     pub sheet: SpriteSheetConfig,
     pub animator: SpriteSheetAnimator,
@@ -87,28 +100,65 @@ pub fn setup_player(
     assets: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
+    spawn_player_entity(
+        &mut commands,
+        assets.as_ref(),
+        texture_atlas_layouts.as_mut(),
+        Vec3::new(0.0, -80.0, PLAYER_Z_LAYER),
+        Some((0, false)),
+        true,
+    );
+}
+
+pub fn spawn_player_entity(
+    commands: &mut Commands,
+    assets: &AssetServer,
+    texture_atlas_layouts: &mut Assets<TextureAtlasLayout>,
+    translation: Vec3,
+    identity: Option<(u64, bool)>,
+    local: bool,
+) -> Entity {
     let sprite_image = assets.load("robber.png");
     let player_sheet = SpriteSheetConfig::simple_4dir_rows(16, 3, 3, 0, 1, 2, 0.15);
-    let (sprite, animator, sheet) = make_sprite_with_animator(
+    let (mut sprite, animator, sheet) = make_sprite_with_animator(
         sprite_image,
         player_sheet,
         Facing::Down,
-        &mut texture_atlas_layouts,
+        texture_atlas_layouts,
     );
 
-    commands.spawn((
+    if identity.map(|(_, is_host)| is_host).unwrap_or(false) {
+        sprite.color = Color::srgb(1.0, 0.76, 0.18);
+    }
+
+    let mut entity = commands.spawn((
         Player,
         PlayerAnimState { sheet, animator },
         sprite,
-        Transform::from_xyz(0.0, -80.0, PLAYER_Z_LAYER),
+        Transform::from_translation(translation),
     ));
+
+    if let Some((id, is_host)) = identity {
+        entity.insert(PlayerIdentity { id, is_host });
+    }
+
+    if local {
+        entity.insert(LocalPlayer);
+    } else {
+        entity.insert(RemotePlayer);
+    }
+
+    entity.id()
 }
 
 pub fn move_player(
     time: Res<Time>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     movement_lock: Option<Res<PlayerMovementLock>>,
-    mut players: Query<(&mut Transform, &mut Sprite, &mut PlayerAnimState), With<Player>>,
+    mut players: Query<
+        (&mut Transform, &mut Sprite, &mut PlayerAnimState),
+        (With<Player>, With<LocalPlayer>),
+    >,
     walls: Query<(&GlobalTransform, &BoundingBox, Option<&MazeTile>), Without<Player>>,
     maze_tiles: Query<Entity, With<MazeTile>>,
 ) {
@@ -178,8 +228,8 @@ pub fn move_player(
 }
 
 pub fn follow_player_camera(
-    mut camera_query: Query<&mut Transform, (With<Camera2d>, Without<Player>)>,
-    player_query: Query<&Transform, With<Player>>,
+    mut camera_query: Query<&mut Transform, (With<Camera2d>, With<MainCamera>, Without<Player>)>,
+    player_query: Query<&Transform, (With<Player>, With<LocalPlayer>)>,
 ) {
     let Ok(player_transform) = player_query.single() else {
         return;
@@ -214,7 +264,10 @@ fn check_global_z(
             entity,
             name_str,
             global_z,
-            local_tf_query.get(entity).map(|t| t.translation.z).unwrap_or(0.0)
+            local_tf_query
+                .get(entity)
+                .map(|t| t.translation.z)
+                .unwrap_or(0.0)
         );
     }
 
@@ -239,16 +292,13 @@ fn check_global_z(
             .map(|t| t.translation.z)
             .unwrap_or(0.0);
         let lock_target = lock_z_query.get(entity).ok().map(|z| z.0);
-        let parent_info = parent_query
-            .get(entity)
-            .ok()
-            .and_then(|p| {
-                let parent_e = p.parent();
-                parent_global_query
-                    .get(parent_e)
-                    .ok()
-                    .map(|pg| (parent_e, pg.translation().z))
-            });
+        let parent_info = parent_query.get(entity).ok().and_then(|p| {
+            let parent_e = p.parent();
+            parent_global_query
+                .get(parent_e)
+                .ok()
+                .map(|pg| (parent_e, pg.translation().z))
+        });
 
         println!(
             "Entity: {:?} ({}), Global Z: {}, Local Z: {}, LockGlobalZ: {:?}, Parent: {:?}",

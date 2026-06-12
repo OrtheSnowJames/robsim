@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
-use crate::player::Player;
+use crate::map::scene::MainCamera;
+use crate::player::{LocalPlayer, Player};
 
 #[derive(Component)]
 pub struct KeycapPrompt;
@@ -80,9 +81,9 @@ fn setup_space_prompt(mut commands: Commands) {
 
 fn update_key_prompt_ui(
     time: Res<Time>,
-    player_query: Query<&Transform, (With<Player>, Without<KeycapPrompt>)>,
+    player_query: Query<&Transform, (With<Player>, With<LocalPlayer>, Without<KeycapPrompt>)>,
     key_prompt_query: Query<(&GlobalTransform, &KeyPrompt), Without<Player>>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
+    camera_query: Query<(&Camera, &GlobalTransform), (With<Camera2d>, With<MainCamera>)>,
     mut prompt_query: Query<
         (
             &mut Node,

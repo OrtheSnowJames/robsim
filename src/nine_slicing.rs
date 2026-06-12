@@ -16,7 +16,10 @@ pub struct NineSliceBorder {
 }
 
 fn apply_nine_slice_border(
-    mut query: Query<(&NineSliceBorder, &mut ImageNode), Or<(Added<NineSliceBorder>, Changed<NineSliceBorder>)>>,
+    mut query: Query<
+        (&NineSliceBorder, &mut ImageNode),
+        Or<(Added<NineSliceBorder>, Changed<NineSliceBorder>)>,
+    >,
 ) {
     for (nine_slice, mut image_node) in &mut query {
         let insets = nine_slice.border_insets;

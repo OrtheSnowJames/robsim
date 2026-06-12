@@ -1,21 +1,16 @@
-use bevy::prelude::*;
 use bevy::ecs::system::SystemParam;
+use bevy::prelude::*;
 use bevy_ecs_ldtk::prelude::*;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::player::Player;
 use super::scene::SceneChangeRequest;
+use crate::player::{LocalPlayer, Player};
 
 #[derive(SystemParam)]
 pub struct LdtkEntityByNameQuery<'w, 's> {
-    entities: Query<
-        'w,
-        's,
-        (Entity, &'static EntityInstance, &'static Transform),
-        Without<Player>,
-    >,
+    entities: Query<'w, 's, (Entity, &'static EntityInstance, &'static Transform), Without<Player>>,
     parents: Query<'w, 's, &'static ChildOf>,
     level_iids: Query<'w, 's, (Entity, &'static LevelIid), Without<Player>>,
 }
@@ -41,11 +36,9 @@ impl<'w, 's> LdtkEntityByNameQuery<'w, 's> {
     }
 
     pub fn first_named(&self, name: &str) -> Option<(Entity, &EntityInstance, &Transform)> {
-        self.entities
-            .iter()
-            .find(|(entity, instance, _)| {
-                instance.identifier == name && self.is_in_active_level(*entity)
-            })
+        self.entities.iter().find(|(entity, instance, _)| {
+            instance.identifier == name && self.is_in_active_level(*entity)
+        })
     }
 
     pub fn iter_named(
@@ -53,11 +46,9 @@ impl<'w, 's> LdtkEntityByNameQuery<'w, 's> {
         name: &str,
     ) -> impl Iterator<Item = (Entity, &EntityInstance, &Transform)> + '_ {
         let target = name.to_string();
-        self.entities
-            .iter()
-            .filter(move |(entity, instance, _)| {
-                instance.identifier == target && self.is_in_active_level(*entity)
-            })
+        self.entities.iter().filter(move |(entity, instance, _)| {
+            instance.identifier == target && self.is_in_active_level(*entity)
+        })
     }
 
     pub fn iter_prefix(
@@ -65,11 +56,9 @@ impl<'w, 's> LdtkEntityByNameQuery<'w, 's> {
         prefix: &str,
     ) -> impl Iterator<Item = (Entity, &EntityInstance, &Transform)> + '_ {
         let target = prefix.to_string();
-        self.entities
-            .iter()
-            .filter(move |(entity, instance, _)| {
-                instance.identifier.starts_with(&target) && self.is_in_active_level(*entity)
-            })
+        self.entities.iter().filter(move |(entity, instance, _)| {
+            instance.identifier.starts_with(&target) && self.is_in_active_level(*entity)
+        })
     }
 
     pub fn iter_prefix_in_level(
@@ -100,6 +89,8 @@ impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(LdtkPlugin);
         app.add_message::<SceneChangeRequest>();
+        app.add_message::<super::scene::MultiplayerMazeTransitionRequest>();
+        app.add_message::<super::scene::MultiplayerMazeTransitionBroadcast>();
         app.init_resource::<LoadedMap>();
         app.init_resource::<PendingPlayerStartScene>();
         app.init_resource::<PlayerStartApplyState>();
@@ -222,7 +213,9 @@ fn materialize_transfer_portals(
 
 fn apply_player_start(
     loaded_map: Res<LoadedMap>,
-    mut players: Query<&mut Transform, With<Player>>,
+    ldtk_world_query: Query<&LdtkProjectHandle>,
+    ldtk_projects: Res<Assets<LdtkProject>>,
+    mut players: Query<&mut Transform, (With<Player>, With<LocalPlayer>)>,
     mut pending_scene: ResMut<PendingPlayerStartScene>,
     mut apply_state: ResMut<PlayerStartApplyState>,
 ) {
@@ -256,7 +249,7 @@ fn apply_player_start(
         .as_deref()
         .map(scene_tag_from_map_asset_path);
 
-    let map_json = match read_map_json(&loaded_map) {
+    let map_json = match read_loaded_map_json(&ldtk_world_query, ldtk_projects.as_ref()) {
         Ok(v) => v,
         Err(_) => return,
     };
@@ -268,10 +261,7 @@ fn apply_player_start(
         Some(level) => level,
         None => return,
     };
-    let current_level_iid = level
-        .get("iid")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let current_level_iid = level.get("iid").and_then(Value::as_str).map(str::to_string);
     let level_px_hei = level
         .get("pxHei")
         .and_then(Value::as_i64)
@@ -463,6 +453,20 @@ pub(crate) fn map_asset_to_disk_path(asset_path: &str) -> PathBuf {
         .join(asset_path)
 }
 
+pub(crate) fn read_loaded_map_json(
+    ldtk_world_query: &Query<&LdtkProjectHandle>,
+    ldtk_projects: &Assets<LdtkProject>,
+) -> Result<Value, String> {
+    let handle = ldtk_world_query
+        .single()
+        .map_err(|_| "No active LDtk world handle".to_string())?;
+    let project = ldtk_projects
+        .get(&**handle)
+        .ok_or_else(|| "Active LDtk project asset is not loaded".to_string())?;
+    serde_json::to_value(project.json_data())
+        .map_err(|e| format!("Failed serializing loaded LDtk JSON: {e}"))
+}
+
 pub(crate) fn read_map_json(loaded_map: &LoadedMap) -> Result<Value, String> {
     let asset_path = loaded_map_path(loaded_map);
     let disk_path = map_asset_to_disk_path(asset_path);
@@ -514,7 +518,10 @@ pub(crate) fn ldtk_layer_instances(level: &Value) -> Result<&[Value], String> {
     Ok(layers.as_slice())
 }
 
-pub(crate) fn ldtk_level_dimensions(level: &Value, layers: &[Value]) -> Result<(usize, usize), String> {
+pub(crate) fn ldtk_level_dimensions(
+    level: &Value,
+    layers: &[Value],
+) -> Result<(usize, usize), String> {
     let default_grid_size = layers
         .iter()
         .find_map(|layer| layer.get("__gridSize").and_then(Value::as_i64))
@@ -532,9 +539,12 @@ pub(crate) fn ldtk_level_dimensions(level: &Value, layers: &[Value]) -> Result<(
                 .map(|px| (px as usize) / default_grid_size)
         })
         .or_else(|| {
-            layers
-                .iter()
-                .find_map(|layer| layer.get("__cWid").and_then(Value::as_u64).map(|v| v as usize))
+            layers.iter().find_map(|layer| {
+                layer
+                    .get("__cWid")
+                    .and_then(Value::as_u64)
+                    .map(|v| v as usize)
+            })
         })
         .ok_or_else(|| "Level missing usable width (`__cWid` or `pxWid`)".to_string())?;
 
@@ -549,9 +559,12 @@ pub(crate) fn ldtk_level_dimensions(level: &Value, layers: &[Value]) -> Result<(
                 .map(|px| (px as usize) / default_grid_size)
         })
         .or_else(|| {
-            layers
-                .iter()
-                .find_map(|layer| layer.get("__cHei").and_then(Value::as_u64).map(|v| v as usize))
+            layers.iter().find_map(|layer| {
+                layer
+                    .get("__cHei")
+                    .and_then(Value::as_u64)
+                    .map(|v| v as usize)
+            })
         })
         .ok_or_else(|| "Level missing usable height (`__cHei` or `pxHei`)".to_string())?;
 
@@ -597,7 +610,11 @@ fn apply_intgrid_occupancy(layer: &Value, grid: &mut [Vec<u8>]) {
     }
 }
 
-pub(crate) fn mark_cells_from_tile_array(tile_array: Option<&Value>, grid_size: i32, grid: &mut [Vec<u8>]) {
+pub(crate) fn mark_cells_from_tile_array(
+    tile_array: Option<&Value>,
+    grid_size: i32,
+    grid: &mut [Vec<u8>],
+) {
     let Some(tiles) = tile_array.and_then(Value::as_array) else {
         return;
     };

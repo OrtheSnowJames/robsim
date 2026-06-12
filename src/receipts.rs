@@ -1,18 +1,16 @@
+use crate::random::random_range_i32;
 use bevy::prelude::Resource;
-use rand::RngExt;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
 
-const LINES_JSON_PATH: &str = "assets/lines.jsonc";
+const LINES_JSON_RAW: &str = include_str!("../assets/lines.jsonc");
 const RAND_VAR_TO: i32 = 10;
 
 const FIRST_NAMES: &[&str] = &[
     "Walter", "Harold", "Edgar", "Clarence", "Eugene", "Franklin", "Theodore", "Albert", "Stanley",
     "Wilbur", "Milton", "Leonard", "Chester", "Raymond", "Bernard", "Mabel", "Edith", "Dorothy",
     "Eleanor", "Florence", "Agnes", "Beatrice", "Hazel", "Mildred", "Pearl", "Gertrude", "Gladys",
-    "Viola", "Esther", "Lucille", "Charlie"
+    "Viola", "Esther", "Lucille", "Charlie",
 ];
 
 const LAST_NAMES: &[&str] = &[
@@ -86,9 +84,7 @@ impl Receipt {
     }
 
     pub fn lines_object(self) -> Option<Value> {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(LINES_JSON_PATH);
-        let raw = fs::read_to_string(path).ok()?;
-        self.lines_object_from_raw(&raw)
+        self.lines_object_from_raw(LINES_JSON_RAW)
     }
 
     pub fn lines_object_from_raw(self, raw: &str) -> Option<Value> {
@@ -123,10 +119,9 @@ impl Receipt {
             format!("{:.1}", self.heist_duration_secs),
         );
 
-        let mut rng = rand::rng();
         replacements.insert(
             String::from("{rand}"),
-            rng.random_range(0..RAND_VAR_TO).to_string(),
+            random_range_i32(0..RAND_VAR_TO).to_string(),
         );
         replacements.insert(String::from("{author}"), random_name());
 
@@ -196,9 +191,8 @@ impl ReceiptCache {
     }
 }
 
-fn random_name() -> String {
-    let mut rng = rand::rng();
-    let first_name = FIRST_NAMES[rng.random_range(0..FIRST_NAMES.len())];
-    let last_name = LAST_NAMES[rng.random_range(0..LAST_NAMES.len())];
+pub fn random_name() -> String {
+    let first_name = FIRST_NAMES[crate::random::random_index(FIRST_NAMES.len())];
+    let last_name = LAST_NAMES[crate::random::random_index(LAST_NAMES.len())];
     format!("{first_name} {last_name}")
 }

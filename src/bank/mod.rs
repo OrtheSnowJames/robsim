@@ -1,8 +1,8 @@
+pub mod generation;
+pub mod guard;
 pub mod img_layer;
 pub mod light;
-pub mod generation;
 pub mod render;
-pub mod guard;
 pub mod teller;
 
 use bevy::prelude::*;
@@ -32,7 +32,7 @@ pub enum GridType {
     EXIT = 5,
     HIDE = 6,
     COIN = 7,
-    SHAFT = 8
+    SHAFT = 8,
 }
 
 pub type Grid = Vec<Vec<u8>>;
@@ -46,9 +46,7 @@ fn get_grid_at(grid: &Grid, x: isize, y: isize) -> Option<u8> {
     let x = x as usize;
     let y = y as usize;
 
-    grid.get(y)
-        .and_then(|row| row.get(x))
-        .copied()
+    grid.get(y).and_then(|row| row.get(x)).copied()
 }
 
 fn set_grid_at(grid: &mut Grid, at: Vec2, value: u8) -> bool {
