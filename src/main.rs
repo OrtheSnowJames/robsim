@@ -44,21 +44,24 @@ fn main() {
         AssetMetaCheck::Always
     };
 
-    App::new()
-        .add_plugins(
-            DefaultPlugins
-                .set(AssetPlugin {
-                    file_path: asset_root,
-                    meta_check,
-                    ..default()
-                })
-                .set(ImagePlugin::default_nearest()),
-        )
-        .add_plugins(CollisionPlugin)
-        .add_plugins(MapPlugin)
-        .add_plugins(PlayerPlugin)
-        .add_plugins(robsim::multiplayer::MultiplayerPlugin)
-        .add_plugins(BankPlugin)
+    let mut app = App::new();
+    app.add_plugins(
+        DefaultPlugins
+            .set(AssetPlugin {
+                file_path: asset_root,
+                meta_check,
+                ..default()
+            })
+            .set(ImagePlugin::default_nearest()),
+    )
+    .add_plugins(CollisionPlugin)
+    .add_plugins(MapPlugin)
+    .add_plugins(PlayerPlugin);
+
+    #[cfg(not(target_arch = "wasm32"))]
+    app.add_plugins(robsim::multiplayer::MultiplayerPlugin);
+
+    app.add_plugins(BankPlugin)
         .add_plugins(HudPlugin)
         .add_plugins(TavernPlugin)
         .add_plugins(TextBubblePlugin)

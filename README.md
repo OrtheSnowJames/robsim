@@ -36,6 +36,27 @@ If you're unsuccessful:
 cargo run # does everything
 ```
 
+### Web Build
+
+Install the web build tools once:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install trunk --locked
+```
+
+Build a release bundle with the Bash function:
+
+```bash
+source ./build-web.sh
+robsim_build_web
+```
+
+Or run `bash build-web.sh` directly. Each build refreshes `dist/` with
+`index.html`, JavaScript, WebAssembly, and the `assets/` directory. Upload all of
+its contents to a static web host. Asset URLs are relative, so the game can be
+hosted at the site root or in a subdirectory. Web builds run in single-player.
+
 ## Notes
 
 I probably should've used Godot. I reinvented a lot of features from it. (just look at all the spec structs!)

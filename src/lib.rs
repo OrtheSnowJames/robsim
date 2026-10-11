@@ -5,6 +5,7 @@ pub mod enter_interact;
 pub mod entity_dialogue;
 pub mod hud;
 pub mod map;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod multiplayer;
 pub mod nine_slicing;
 pub mod player;

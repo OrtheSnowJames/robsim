@@ -4,10 +4,13 @@ use crate::bank::light::{self, DEFAULT_MAX_DISTANCE_TILES};
 use crate::bank::{Grid, GridType};
 use crate::collision::BoundingBox;
 use crate::map::TransferPortal;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::multiplayer::MultiplayerSession;
 use crate::player::{LocalPlayer, Player};
 use bevy::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use bevy_networker_multiplayer::{NetResource, netmsg};
+#[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashSet;
 
 pub const TILE_SIZE: f32 = 16.0;
@@ -51,6 +54,7 @@ pub struct ExitTileCell {
 #[derive(Component, Clone, Copy)]
 pub struct CoinValue(pub i32);
 
+#[cfg(not(target_arch = "wasm32"))]
 #[netmsg]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct CoinPickupRequest {
@@ -59,6 +63,7 @@ struct CoinPickupRequest {
     y: u32,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[netmsg]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct CoinCollectedBroadcast {
@@ -426,27 +431,32 @@ pub fn update_maze_lighting(
 pub fn collect_coins(
     mut commands: Commands,
     mut money: ResMut<PlayerMoney>,
-    multiplayer_session: Option<Res<MultiplayerSession>>,
-    mut net: Option<ResMut<NetResource>>,
+    #[cfg(not(target_arch = "wasm32"))] multiplayer_session: Option<Res<MultiplayerSession>>,
+    #[cfg(not(target_arch = "wasm32"))] mut net: Option<ResMut<NetResource>>,
     maze_state: Option<Res<MazeRenderState>>,
-    mut pending_client_pickups: Local<HashSet<(usize, usize)>>,
+    #[cfg(not(target_arch = "wasm32"))] mut pending_client_pickups: Local<HashSet<(usize, usize)>>,
     player_query: Query<&Transform, (With<Player>, With<LocalPlayer>)>,
     coin_query: Query<(Entity, &GlobalTransform, &CoinValue, &CoinTileCell)>,
 ) {
+    #[cfg(not(target_arch = "wasm32"))]
     let connected = multiplayer_session
         .as_deref()
         .map(MultiplayerSession::is_connected)
         .unwrap_or(false);
+    #[cfg(not(target_arch = "wasm32"))]
     let local_is_host = multiplayer_session
         .as_deref()
         .map(MultiplayerSession::local_is_host)
         .unwrap_or(false);
+    #[cfg(not(target_arch = "wasm32"))]
     let local_player_id = multiplayer_session
         .as_deref()
         .map(|session| session.local_player_id)
         .unwrap_or(0);
+    #[cfg(not(target_arch = "wasm32"))]
     let mut removed_cells = HashSet::new();
 
+    #[cfg(not(target_arch = "wasm32"))]
     if connected && !local_is_host {
         if let Some(net) = net.as_deref_mut() {
             for collected in net.drain_messages::<CoinCollectedBroadcast>() {
@@ -465,10 +475,12 @@ pub fn collect_coins(
     }
 
     if maze_state.is_none() {
+        #[cfg(not(target_arch = "wasm32"))]
         pending_client_pickups.clear();
         return;
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     if connected && local_is_host {
         let mut broadcasts = Vec::new();
         if let Some(net) = net.as_deref_mut() {
@@ -507,20 +519,23 @@ pub fn collect_coins(
     let player_pos = player_transform.translation.truncate();
     let pickup_radius = 8.0;
 
-    for (coin_entity, coin_tf, coin_value, coin_cell) in &coin_query {
-        let cell = (coin_cell.x, coin_cell.y);
+    for (coin_entity, coin_tf, coin_value, _coin_cell) in &coin_query {
+        #[cfg(not(target_arch = "wasm32"))]
+        let cell = (_coin_cell.x, _coin_cell.y);
+        #[cfg(not(target_arch = "wasm32"))]
         if removed_cells.contains(&cell) {
             continue;
         }
         let coin_pos = coin_tf.translation().truncate();
         if player_pos.distance(coin_pos) <= pickup_radius {
+            #[cfg(not(target_arch = "wasm32"))]
             if connected && !local_is_host {
                 if pending_client_pickups.insert(cell) {
                     if let Some(net) = net.as_deref_mut() {
                         net.queue_message(CoinPickupRequest {
                             player_id: local_player_id,
-                            x: coin_cell.x as u32,
-                            y: coin_cell.y as u32,
+                            x: _coin_cell.x as u32,
+                            y: _coin_cell.y as u32,
                         });
                     }
                 }
@@ -529,12 +544,13 @@ pub fn collect_coins(
 
             money.amount += coin_value.0;
             commands.entity(coin_entity).try_despawn();
+            #[cfg(not(target_arch = "wasm32"))]
             if connected && local_is_host {
                 if let Some(net) = net.as_deref_mut() {
                     net.queue_message(CoinCollectedBroadcast {
                         collector_id: local_player_id,
-                        x: coin_cell.x as u32,
-                        y: coin_cell.y as u32,
+                        x: _coin_cell.x as u32,
+                        y: _coin_cell.y as u32,
                         value: coin_value.0,
                     });
                 }
@@ -543,6 +559,7 @@ pub fn collect_coins(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn coin_value_at_cell(
     coin_query: &Query<(Entity, &GlobalTransform, &CoinValue, &CoinTileCell)>,
     x: usize,
@@ -553,6 +570,7 @@ fn coin_value_at_cell(
         .find_map(|(_, _, value, cell)| (cell.x == x && cell.y == y).then_some(value.0))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn despawn_coin_at_cell(
     commands: &mut Commands,
     coin_query: &Query<(Entity, &GlobalTransform, &CoinValue, &CoinTileCell)>,

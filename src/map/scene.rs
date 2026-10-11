@@ -11,6 +11,7 @@ use crate::bank::render::maze::{
     world_to_grid_cell,
 };
 use crate::entity_dialogue::PlayerMovementLock;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::multiplayer::MultiplayerSession;
 use crate::player::{LocalPlayer, Player};
 use crate::tavern::HeistReportMessage;
@@ -314,7 +315,7 @@ pub fn trigger_scene_transfer(
     player_money: Res<PlayerMoney>,
     player_query: Query<&Transform, (With<Player>, With<LocalPlayer>)>,
     transfer_query: Query<(&GlobalTransform, &TransferPortal)>,
-    multiplayer_session: Option<Res<MultiplayerSession>>,
+    #[cfg(not(target_arch = "wasm32"))] multiplayer_session: Option<Res<MultiplayerSession>>,
 ) {
     #[cfg(not(target_arch = "wasm32"))]
     let _ = player_money.amount;
@@ -351,6 +352,9 @@ pub fn trigger_scene_transfer(
                 continue;
             }
             let maze_seed = crate::random::random_u64();
+            #[cfg(target_arch = "wasm32")]
+            let should_broadcast_maze = false;
+            #[cfg(not(target_arch = "wasm32"))]
             let should_broadcast_maze = multiplayer_session
                 .as_deref()
                 .map(MultiplayerSession::local_is_host)
@@ -372,6 +376,7 @@ pub fn trigger_scene_transfer(
         }
 
         let next_scene_asset_path = scene_to_asset_path(&transfer.scene);
+        #[cfg(not(target_arch = "wasm32"))]
         if next_scene_asset_path == "maps/bank.ldtk"
             && multiplayer_session
                 .as_deref()

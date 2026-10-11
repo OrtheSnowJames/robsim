@@ -1,4 +1,5 @@
 use crate::PlayerMoney;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::multiplayer::MultiplayerRoster;
 use bevy::prelude::*;
 
@@ -8,6 +9,7 @@ struct TopNode;
 #[derive(Component)]
 struct MoneyText;
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Component)]
 struct PlayerListText;
 
@@ -16,7 +18,9 @@ pub struct HudPlugin;
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_hud);
-        app.add_systems(Update, (change_money, change_player_list));
+        app.add_systems(Update, change_money);
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(Update, change_player_list);
     }
 }
 
@@ -62,6 +66,7 @@ fn setup_hud(mut commands: Commands, player_money: Option<Res<PlayerMoney>>) {
                     ));
                 });
 
+            #[cfg(not(target_arch = "wasm32"))]
             parent
                 .spawn((
                     Node {
@@ -100,6 +105,7 @@ fn change_money(
     text.0 = new_text;
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn change_player_list(
     roster: Option<Res<MultiplayerRoster>>,
     mut text_q: Query<&mut Text, With<PlayerListText>>,

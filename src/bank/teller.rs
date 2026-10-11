@@ -4,6 +4,7 @@ use serde_json::Value;
 use crate::collision::BoundingBox;
 use crate::entity_dialogue::DisabledEntityDialogues;
 use crate::map::{LdtkEntityByNameQuery, LoadedMap, loaded_map_path};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::multiplayer::MultiplayerSession;
 use crate::player::{LocalPlayer, Player};
 use crate::random::random_range_usize;
@@ -57,7 +58,7 @@ pub fn trigger_bank_heist(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     player_entity_q: Query<Entity, (With<Player>, With<LocalPlayer>)>,
     loaded_map: Res<LoadedMap>,
-    multiplayer_session: Option<Res<MultiplayerSession>>,
+    #[cfg(not(target_arch = "wasm32"))] multiplayer_session: Option<Res<MultiplayerSession>>,
     mut heist_state: ResMut<BankHeistState>,
     mut disabled_dialogues: ResMut<DisabledEntityDialogues>,
     assets: Res<AssetServer>,
@@ -75,6 +76,7 @@ pub fn trigger_bank_heist(
         return;
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     if multiplayer_session
         .as_deref()
         .map(|session| session.is_connected() && !session.local_is_host())

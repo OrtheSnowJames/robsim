@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
+#[cfg(not(target_arch = "wasm32"))]
 use bevy_networker_multiplayer::{NetResource, netmsg};
 use serde_json::Value;
 
@@ -9,6 +10,7 @@ use crate::bank::render::maze::{
 use crate::bank::{Grid, GridType};
 use crate::entity_dialogue::PlayerMovementLock;
 use crate::map::{HeistLifetimeStats, HeistRunStats};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::multiplayer::MultiplayerSession;
 use crate::player::{LocalPlayer, Player, PlayerIdentity};
 use crate::random::random_range_usize;
@@ -32,6 +34,7 @@ const GUARD_SPRITE_PATH: &str = "guard.png";
 const EXCLAMATION_PATH: &str = "exclamation.png";
 const GUARD_CAPTURE_EXCLAIM_SECS: f32 = 0.35;
 const GUARD_CAPTURE_DIALOGUE: &str = "Hey!\nCaught you.\nPress ENTER.";
+#[cfg(not(target_arch = "wasm32"))]
 const GUARD_SYNC_INTERVAL_SECONDS: f32 = 0.05;
 
 #[derive(Clone, Copy)]
@@ -59,15 +62,17 @@ impl Plugin for GuardPlugin {
             .init_resource::<SharedGuardLockState>()
             .init_resource::<GuardCaptureSequence>()
             .add_systems(Startup, setup_guard_capture_ui)
-            .add_systems(
-                Update,
-                (
-                    broadcast_multiplayer_guard_state.after(update_guards),
-                    apply_multiplayer_guard_state.after(update_guards),
-                    client_detect_multiplayer_guard_capture.after(apply_multiplayer_guard_state),
-                ),
-            )
             .add_systems(Update, run_guard_capture_sequence);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(
+            Update,
+            (
+                broadcast_multiplayer_guard_state.after(update_guards),
+                apply_multiplayer_guard_state.after(update_guards),
+                client_detect_multiplayer_guard_capture.after(apply_multiplayer_guard_state),
+            ),
+        );
     }
 }
 
@@ -148,6 +153,7 @@ struct GuardTarget {
     local: bool,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[netmsg]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct GuardStateSnapshot {
@@ -155,6 +161,7 @@ struct GuardStateSnapshot {
     chase_player_id: u64,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct GuardNetState {
     corner: u8,
@@ -558,7 +565,7 @@ pub fn update_guards(
     heist_lifetime: Option<Res<HeistLifetimeStats>>,
     player_money: Option<Res<crate::PlayerMoney>>,
     maze_state: Option<Res<MazeRenderState>>,
-    multiplayer_session: Option<Res<MultiplayerSession>>,
+    #[cfg(not(target_arch = "wasm32"))] multiplayer_session: Option<Res<MultiplayerSession>>,
     mut alert: ResMut<GuardAlertState>,
     mut capture: ResMut<GuardCaptureSequence>,
     mut shared_lock_state: ResMut<SharedGuardLockState>,
@@ -586,6 +593,7 @@ pub fn update_guards(
     path_debug_query: Query<Entity, With<GuardPathDebug>>,
     mut path_redraw_timer: Local<Option<Timer>>,
 ) {
+    #[cfg(not(target_arch = "wasm32"))]
     if multiplayer_session
         .as_deref()
         .map(|session| session.is_connected() && !session.local_is_host())
@@ -1014,6 +1022,7 @@ fn start_guard_capture(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn guard_mode_to_wire(mode: GuardMode) -> u8 {
     match mode {
         GuardMode::Patrol => 0,
@@ -1021,6 +1030,7 @@ fn guard_mode_to_wire(mode: GuardMode) -> u8 {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn guard_mode_from_wire(mode: u8) -> GuardMode {
     if mode == 1 {
         GuardMode::Chase
@@ -1029,6 +1039,7 @@ fn guard_mode_from_wire(mode: u8) -> GuardMode {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn broadcast_multiplayer_guard_state(
     time: Res<Time>,
     mut timer: Local<Option<Timer>>,
@@ -1080,6 +1091,7 @@ fn broadcast_multiplayer_guard_state(
     });
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn apply_multiplayer_guard_state(
     time: Res<Time>,
     session: Option<Res<MultiplayerSession>>,
@@ -1145,6 +1157,7 @@ fn apply_multiplayer_guard_state(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn client_detect_multiplayer_guard_capture(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
